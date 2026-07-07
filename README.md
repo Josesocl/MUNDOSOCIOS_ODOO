@@ -6,23 +6,16 @@ Los materiales de trabajo del proyecto viven hoy en OneDrive:
 `Documentos OneD IBS/CONSULTORÍA JR JOTTAR/CLIENTES CONSULTORA JRJ/MUNDOSOCIOS ODOO/`
 (punto de entrada: `00_HANDOFF_Contexto_Proyecto_MundoSocios.md`).
 
-## Contenido actual
+## Contenido
 
 - `EVALUACION_PROYECTO_2026-07-07.md` — evaluación completa del proyecto: estado de los entregables SOW, herramientas operativas, Validador SII, flujos de proceso, preparación para Odoo y entorno de trabajo, con un plan de mejoras priorizado (16 acciones).
+- `docs/odoo/Especificacion_Suscripciones_Cobro_Recurrente_Odoo.md` — configuración de los productos recurrentes (cuota social anual, seguros con cobro mensual) para el partner Odoo.
+- `docs/fase-0/Politica_morosidad_y_pagos_parciales_BORRADOR.md` — cierra DP-04/DP-06 y PC-08 del BP de Recaudación (requiere validación GG/Recaudación).
+- `docs/flujos-proceso/BP_Proceso_Creacion_Proveedor.md` — reemplazo del blueprint .docx corrupto.
+- `docs/correcciones/Correcciones_pendientes_OneDrive.md` — ediciones exactas a aplicar en los archivos de OneDrive (banners, inconsistencias E1/E2/E5, higiene) + `settings.json` recomendado y skill daily-timebox corregida.
+- `herramientas/generador-devengos/` — generador de los archivos mensuales de devengo de seguros para Manager+ desde un maestro único, con validación previa de RUTs y clientes (14 tests).
+- `.claude/skills/mundosocios-context/` — contexto del proyecto para sesiones de Claude.
 
-## Propuesta de estructura (mejora #13 de la evaluación)
+## Pendiente de migrar desde OneDrive
 
-Migrar a este repositorio todo lo textual y el código, dejando OneDrive para binarios de intercambio con el cliente:
-
-```
-docs/
-  handoff/            # 00_HANDOFF y actas
-  entregables-sow/    # E1–E5 en .md
-  flujos-proceso/     # blueprints y manuales transcritos
-  fase-0/             # política, checklist, convenciones
-herramientas/
-  validador-sii/      # código Python + tests
-  proxy-apigateway/   # Squid/Docker (una sola copia)
-.claude/
-  skills/mundosocios-context/SKILL.md   # contexto del proyecto para sesiones de Claude
-```
+Entregables SOW y manuales en `.md`, Validador SII (código + tests) y proxy — ver mejora #13 de la evaluación. OneDrive queda para binarios de intercambio con el cliente (.docx/.xlsx/.pptx).

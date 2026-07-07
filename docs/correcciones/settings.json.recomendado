@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/jrjottar/Library/CloudStorage/OneDrive-IBSolucionLtda/**)",
+      "Bash(python3 *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git pull *)",
+      "Bash(npm run *)",
+      "Bash(npm test *)"
+    ],
+    "deny": [],
+    "defaultMode": "acceptEdits"
+  }
+}
