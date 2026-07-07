@@ -10,6 +10,7 @@ Los materiales de trabajo del proyecto viven hoy en OneDrive:
 
 - `EVALUACION_PROYECTO_2026-07-07.md` — evaluación completa del proyecto: estado de los entregables SOW, herramientas operativas, Validador SII, flujos de proceso, preparación para Odoo y entorno de trabajo, con un plan de mejoras priorizado (16 acciones).
 - `docs/odoo/Especificacion_Suscripciones_Cobro_Recurrente_Odoo.md` — configuración de los productos recurrentes (cuota social anual, seguros con cobro mensual) para el partner Odoo.
+- `docs/automatizacion-puente/Plan_Automatizacion_Cobro_Recurrente_Puente.md` — plan jul→nov 2026 para automatizar el ciclo devengo→cobro→registro→conciliación con las herramientas actuales (Zoho estándar, Manager+ por archivo, Excel/Python), en 4 olas.
 - `docs/fase-0/Politica_morosidad_y_pagos_parciales_BORRADOR.md` — cierra DP-04/DP-06 y PC-08 del BP de Recaudación (requiere validación GG/Recaudación).
 - `docs/flujos-proceso/BP_Proceso_Creacion_Proveedor.md` — reemplazo del blueprint .docx corrupto.
 - `docs/correcciones/Correcciones_pendientes_OneDrive.md` — ediciones exactas a aplicar en los archivos de OneDrive (banners, inconsistencias E1/E2/E5, higiene) + `settings.json` recomendado y skill daily-timebox corregida.
