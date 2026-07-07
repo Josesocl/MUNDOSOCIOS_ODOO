@@ -14,7 +14,8 @@ Los materiales de trabajo del proyecto viven hoy en OneDrive:
 - `docs/fase-0/Politica_morosidad_y_pagos_parciales_BORRADOR.md` — cierra DP-04/DP-06 y PC-08 del BP de Recaudación (requiere validación GG/Recaudación).
 - `docs/flujos-proceso/BP_Proceso_Creacion_Proveedor.md` — reemplazo del blueprint .docx corrupto.
 - `docs/correcciones/Correcciones_pendientes_OneDrive.md` — ediciones exactas a aplicar en los archivos de OneDrive (banners, inconsistencias E1/E2/E5, higiene) + `settings.json` recomendado y skill daily-timebox corregida.
-- `herramientas/generador-devengos/` — generador de los archivos mensuales de devengo de seguros para Manager+ desde un maestro único, con validación previa de RUTs y clientes (14 tests).
+- `herramientas/generador-devengos/` — generadores de devengos para Manager+ desde un maestro único: seguros mensuales (UF propia por seguro) y cuota social anual (reglas 2026: 1 UF persona / 3 UF empresa + adicionales). Formato verificado contra los archivos productivos JUL-26/ENE-26. 19 tests.
+- `herramientas/cruzador-pagos/` — genera el borrador de PRECONCILIACIÓN desde la cartola Banco de Chile + resumen Transbank + maestro: clasifica movimientos, cuadra abonos Transbank y propone RUT para transferencias por match de nombre. 7 tests.
 - `.claude/skills/mundosocios-context/` — contexto del proyecto para sesiones de Claude.
 
 ## Pendiente de migrar desde OneDrive

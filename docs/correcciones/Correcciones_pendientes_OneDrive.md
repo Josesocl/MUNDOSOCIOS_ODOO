@@ -64,7 +64,16 @@ Agregar al inicio: "Materializada en `Herramientas Operativas/02_Registro_y_Plan
 - `FLUJOS DE PROCESO`: marcar cuál versión del manual de sala rige (`MANUAL SOLICITUD SALA...-JRJ.md` vs la normal) y archivar la otra; revisar duplicados `_ocr`/`_ocr_ocr`.
 - Raíz del proyecto: mover `OneDrive_1_6-5-2026.zip` y `OneDrive_2_6-5-2026.zip` a una subcarpeta `ARCHIVO/` (ya están descomprimidos en FLUJOS DE PROCESO).
 
-## 10. Entorno Claude del Mac 🟡
+## 10. Actualizaciones por precisiones del 2026-07-07 🔴
+
+- **Valores de cuota social:** todos los documentos que digan "Empresa 1,44 UF / Persona 0,48 UF" están desactualizados (E1 §3.8, E2 QW3, E3 RF-17, BP Recaudación §1.1-1.2, handoff §7). Valor real 2026: **Persona 1 UF; Empresa 3 UF hasta 3 miembros + 1 UF por miembro desde el 4º**; devengo anual único al 1 de enero (verificado contra `DEVENGO CUOTA SOCIAL * ENE-26.xlsx`).
+- **Cuentas cuota social persona:** el BP Recaudación §1.2 dice 1150001/3210002 para ambas; lo real es persona **1150002/3210001** (empresa sí 1150001/3210002).
+- **UF por seguro:** complementario usa la UF del día 9; catastrófico la del último día del mes anterior (los documentos hablan de una sola "UF del día").
+- **Javiera Valdovinos ya no está en MundoSocios:** quitarla de E1 (§3.13), E5 (tabla de participantes), BP Recaudación §1.4 y handoff §1. Nuevo actor: **Marcos Ibarra**, Analista de Administración y Control de Gestión (envía cierres diarios a Addval; apoyo a recaudación).
+- **Addval:** ciclo real = envío diario L-V por Marcos + 48 h de plazo para subir (no "frecuencia errática" sin regla). Actualizar PC-02 del BP.
+- **Zoho reabierto parcialmente** (reunión 2026-07-07 con Alexander Gutiérrez, soporte Zoho): Sandbox con datos productivos, módulo Proveedores activado, validación RUT por función personalizada, SII vía API Gateway. Actualizar el aviso "FUERA DE ALCANCE" de Build/ (el descarte total ya no es exacto: el diseño sirve de especificación para lo que construya Alexander).
+
+## 11. Entorno Claude del Mac 🟡
 
 - `~/.claude/settings.json`: reemplazar por `docs/correcciones/settings.json.recomendado` (elimina `bypassPermissions` global y los permisos `rm`/`bash *`).
 - `~/.claude/skills/.../daily-timebox/SKILL.md` (copia en `Claude/Scheduled/daily-timebox/`): reemplazar por `docs/correcciones/daily-timebox_SKILL_corregido.md` (frontmatter duplicado corregido y pasos ordenados).

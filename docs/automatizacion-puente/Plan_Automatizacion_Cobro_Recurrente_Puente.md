@@ -3,8 +3,8 @@
 **Proyecto:** MundoSocios CChC · **Fecha:** 2026-07-07 · **Horizonte:** julio → noviembre 2026 (Odoo no estará productivo antes de noviembre)
 **Objetivo:** reducir el trabajo manual del ciclo devengo → cobro → registro → conciliación con el stack actual, sin construir nada que se bote al migrar: **cada pieza del puente es también insumo de la migración a Odoo**.
 
-**Restricciones de diseño (no negociables):**
-- Zoho disponible: **CRM, Forms, Campaigns** (sin Creator ni Flow). La capa Zoho de módulos/Blueprint/Deluge quedó fuera de alcance (2026-07-06); aquí solo se usan funciones estándar: plantillas de correo, importación/actualización masiva por CSV, listas de Campaigns.
+**Restricciones de diseño:**
+- Zoho disponible: **CRM, Forms, Campaigns** (sin Creator ni Flow). **Actualización 2026-07-07:** Zoho se reabrió parcialmente vía soporte oficial (Alexander Gutiérrez): hay Sandbox con datos productivos, módulo de Proveedores activado, y se acordó validación de RUT por función personalizada e integración SII vía API Gateway. Las automatizaciones de CRM que Alexander construya (reglas de validación, funciones) SÍ están disponibles para este plan; lo que sigue fuera es construir la capa completa de módulos/Blueprint del diseño puente de compras.
 - Manager+: **solo por archivo** (Importador/Exportador de datos). Sin API.
 - Herramientas nuevas: Excel sin macros o Python simple (stdlib + openpyxl), operables por el equipo de Patricio con manual de 1 página; corren con cuentas MundoSocios, nunca del consultor.
 - Banco de Chile: cartola y archivos de nómina por el portal.
@@ -19,7 +19,7 @@
 | Devengo cuota social (incorporaciones) | UF manual del SII + correo a mano + comprobante manual + ticket Zoho + aviso a Atención (~8 pasos, 4 sistemas por socio) | 4–8 h | PC-03 |
 | Cobro y comunicación | Nóminas PAC/PAT + correos de cobro y de rechazo uno a uno, sin métricas | 8–12 h | PC-05 |
 | Cruce de pagos | Oriana revisa 3 fuentes (Manager+, Zoho, Excel) cada semana | ~40 h | PC-01 |
-| Registro Addval | Reporte diario por correo; frecuencia de registro errática | (externo) | PC-02 |
+| Registro Addval | Marcos Ibarra (Adm. y Control de Gestión) envía el cierre diario (L-V); Addval tiene 48 h para subir a Manager+ (ej.: cierre del 06-jul enviado el 07 → plazo jue 09) | (externo) | PC-02 |
 | Conciliación | Cartola PDF → transcripción → PRECONCILIACIÓN → CONCILIACIÓN MANAGER → importar | 8–12 h | PC-07 |
 | Morosidad | No existe proceso | — | PC-08 |
 
@@ -54,13 +54,15 @@
 
 ### Ola 0 — Desbloqueos (semana del 7 de julio, sin construcción)
 
-| # | Acción | Responsable | Nota |
+Estado 2026-07-07: 0.2 y la mitad de 0.3 quedaron resueltas con la carpeta `FLUJOS DE PROCESO/RECAUDACIÓN Y COBRANZA` (cartola ya viene en Excel/HTML; layouts de cartola, preconciliación, Transbank, devengos y mantenedores levantados y verificados).
+
+| # | Acción | Responsable | Estado / nota |
 |---|---|---|---|
-| 0.1 | **Construir el maestro único de pólizas** consolidando los 4 mantenedores de Drive (rut, nombre, seguro, factor_uf, medio_pago) + hoja de socios con cuota social (tipo, cámara, correo) | Oriana + consultor | Formato ya definido en `herramientas/generador-devengos/README.md`. Es también el insumo de migración a Odoo |
-| 0.2 | **Pedir al Banco de Chile la cartola en Excel/CSV** (el portal la ofrece; hoy se baja PDF) | Patricio | Elimina la transcripción manual; habilita el cruzador |
-| 0.3 | **Levantar layouts**: archivo de nómina PAC/PAT que se envía al banco, archivo de rechazos que devuelve, reporte Webpay, y qué permite el Exportador de datos de Manager+ (documentos CxC / saldos por cliente) | Oriana + consultor | 1 sesión de 1 h; bloquea las herramientas de la Ola 2 |
-| 0.4 | **Acordar SLA con Addval por escrito**: paquete estándar de transacciones cada viernes 12:00, registro en Manager+ antes del martes | Patricio | Cierra PC-02 sin construir nada |
-| 0.5 | **Validar la política de morosidad** (borrador en `docs/fase-0/`) con Oriana y Constanza | Constanza/Oriana | Sin política no hay recordatorios automatizables |
+| 0.1 | **Consolidar el maestro único** desde los 6 mantenedores (4 seguros + cuota social empresa/persona): rut, nombre, seguro/tipo, factor_uf o miembros, medio de pago, estado PAC/PAT, cámara | Oriana/Marcos + consultor | Los mantenedores reales ya tienen todo el dato; es consolidación, no levantamiento |
+| 0.2 | ~~Cartola en Excel/CSV~~ | — | **Resuelto**: la cartola ya se descarga en formato tabla (HTML/.xls) y el cruzador la lee directo |
+| 0.3 | **Layouts pendientes**: rendición PAC del banco por convenio (16/41) para distribuir la recaudación PAC por socio, archivo de rechazos PAC/PAT, y qué permite el Exportador de datos de Manager+ | Marcos + consultor | Cartola/Transbank/devengos ya levantados; falta solo lo del banco y Manager+ |
+| 0.4 | **Formalizar el ciclo Addval ya existente**: Marcos envía el cierre diario (L-V) y Addval tiene 48 h para subirlo. Falta: registro de cumplimiento (fecha envío vs fecha subida) para hacer exigible el plazo | Marcos | El cruzador puede producir el control de cumplimiento como subproducto |
+| 0.5 | **Validar la política de morosidad** (borrador en `docs/fase-0/`) alineada al ciclo real: morosos de cuota social desde mayo, comunicados y eliminación el 1 de julio, reincorporación pagando el año en curso | Constanza/Oriana | Ajustar el borrador con este ciclo anual antes de firmarlo |
 
 ### Ola 1 — Devengo sin digitación (julio–agosto)
 
@@ -91,7 +93,7 @@
 ## 4. Qué NO se automatiza en el puente (y por qué)
 
 - **Cargo PAC/PAT directo desde Zoho o Python**: requiere integración con pasarela (Toku/Nuvei) — es exactamente el desarrollo crítico de Odoo; hacerlo dos veces no paga por 3 meses.
-- **Workflows/Deluge en Zoho CRM**: quedó fuera de alcance por decisión del cliente; todo lo de Zoho en este plan usa funciones estándar (plantillas, import CSV, Campaigns). Si el cliente quisiera reabrir solo la actualización automática de estados, el diseño está en `Build/` (referencia histórica).
+- **Construcción propia de workflows/Deluge en Zoho CRM**: lo que se haga en Zoho lo construye el soporte oficial (Alexander Gutiérrez) en el Sandbox — validación de RUT, módulo de Proveedores, integración SII vía API Gateway. El diseño de referencia en `Build/` y el Validador SII sirven como especificación para él (ya se acordó enviarle el validador). Este plan no duplica ese trabajo.
 - **Registro contable automático de pagos en Manager+**: el importador de comprobantes lo permitiría, pero el registro es la función contratada a Addval — primero exigir el SLA (0.4); si Addval no cumple en agosto, evaluar internalizar usando el paquete del cruzador como archivo de importación.
 
 ## 5. Esfuerzo y beneficio

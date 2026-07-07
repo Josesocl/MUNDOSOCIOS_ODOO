@@ -11,17 +11,21 @@
 
 Cada socio titular mantiene una **membresía anual** (cuota social) y cero o más **seguros** cuya prima se cobra mensualmente. Ambos se modelan como suscripciones en Odoo (`sale.subscription` / planes recurrentes de ventas), con plan de facturación distinto:
 
-| Producto | Plan | Compromiso | Facturación | Precio | Cuenta CxC | Cuenta ingreso | Doc. legado |
+| Producto | Plan | Compromiso | Facturación | Precio (verificado 2026) | Cuenta CxC | Cuenta ingreso | Doc. legado |
 |---|---|---|---|---|---|---|---|
-| Cuota Social Empresa | Membresía | Anual (renovación automática) | **Anual** (1 nota de cobro/año) | 1,44 UF | 1150001 | 3210002 | CSEMP |
-| Cuota Social Persona | Membresía | Anual | **Anual** | 0,48 UF | 1150001 | 3210002 | CSPER |
+| Cuota Social Empresa | Membresía | Anual (renovación automática) | **Anual** (devengo único al 1 de enero) | **3 UF hasta 3 miembros + 1 UF por miembro desde el 4º** | 1150001 | 3210002 | CSEMP |
+| Cuota Social Persona | Membresía | Anual | **Anual** | **1 UF** | **1150002** | **3210001** | CSPER |
 | Seguro Plan Socios | Seguro | Anual (renovación automática) | **Mensual** | factor UF por póliza | 1130004 | 3310005 | PSOC |
-| Seguro Complementario | Seguro | Anual | **Mensual** | factor UF | 1130003 | 3310003 | SCOMP |
-| Seguro Catastrófico | Seguro | Anual | **Mensual** | factor UF | 1130002 | 3310001 | SCAT |
-| Plan Carreño | Seguro | Anual | **Mensual** | factor UF | 1130005 | 3310004 | PCARR |
+| Seguro Complementario | Seguro | Anual | **Mensual** | factor UF · **UF del día 9** | 1130003 | 3310003 | SCOMP |
+| Seguro Catastrófico | Seguro | Anual | **Mensual** | factor UF · **UF del último día del mes anterior** | 1130002 | 3310001 | SCAT |
+| Plan Carreño | Seguro | Anual | **Mensual** | factor UF (0,2/0,4/0,6) | 1130005 | 3310004 | PCARR |
+
+> Valores y cuentas verificados contra los archivos productivos `DEVENGO * JUL-26 / ENE-26` (2026-07-07). Ojo: las cuentas de cuota social PERSONA van cruzadas respecto de la documentación anterior del proyecto (1150002→3210001); los documentos que digan "0,48/1,44 UF" están desactualizados. La UF del devengo anual de cuota social se toma según regla del cliente (UF de cierre de enero/febrero/marzo — **precisar cuál aplica a qué** con Patricio; el devengo ENE-26 real usó UF $39.731,77).
 
 Decisiones de configuración:
 - **Un producto por seguro** con precio variable por línea (factor UF de la póliza en la línea de suscripción), no un producto por tramo. El factor UF vive en la suscripción del socio.
+- **La cuota social empresa se configura con cantidad = unidades UF** (3 + adicionales por miembro extra), manteniendo el nº de miembros como campo del contacto que recalcula las unidades en la renovación anual.
+- **Cada seguro toma la UF de una fecha distinta** (día 9 / último día del mes anterior): en Odoo esto es una tasa de moneda por fecha específica por producto — configurar la fecha de tasa en la regla de facturación de cada plan, no una UF global.
 - **Cuentas contables definidas en el producto** (categoría contable por producto): la separación fondos propios (cuota social) vs fondos de terceros (seguros) queda estructural — nadie la puede "olvidar" (elimina PC-04).
 - Si el cliente decide ofrecer **cuota social en 12 pagos**, se agrega una variante del plan Membresía con facturación mensual (1,44/12 UF); el compromiso sigue siendo anual. Registrarlo como decisión DP (ver §8).
 

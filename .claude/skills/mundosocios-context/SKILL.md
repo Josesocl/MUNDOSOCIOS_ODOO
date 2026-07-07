@@ -17,12 +17,13 @@ Consultoría de JR Jottar (IB Solución) para MundoSocios, programa de la CChC: 
 - Integración Manager+ **por archivo, no API**. Validador SII usa **API Gateway** (BaseAPI legado, se discontinúa dic-2026).
 - El dominio `cchc.cl` no es accesible; parametrizar owners, nunca cuentas del consultor.
 
-## Reglas de negocio fijas
+## Reglas de negocio fijas (verificadas contra archivos productivos 2026-07-07)
 
 - **Matriz de aprobaciones (CLP bruto c/IVA):** ≤500.000 dueño de presupuesto · 500.001–1.000.000 Cecilia Ramírez · 1.000.001–5.000.000 Patricio Fernández · >5.000.000 doble firma Patricio + Constanza.
-- **Cuota social:** Empresa 1,44 UF / Persona 0,48 UF (anual). Devengo: DEBE 1150001 / HABER 3210002, doc CSEMP/CSPER, glosa `RUT + DEVENGO + CUOTA AÑO + CÁMARA`.
-- **Seguros (fondos de terceros), CxC/ingreso/doc:** Plan Socios 1130004/3310005/PSOC · Complementario 1130003/3310003/SCOMP · Catastrófico 1130002/3310001/SCAT · Plan Carreño 1130005/3310004/PCARR. Prima mensual = factor UF × UF del día.
-- Banco de Chile cta. 8001104309; nóminas todos los martes; retención boletas honorarios 13,75%.
+- **Cuota social (anual, devengo único al 1 de enero):** Persona **1 UF** (DEBE 1150002 / HABER 3210001, doc CSPER) · Empresa **3 UF hasta 3 miembros + 1 UF por miembro desde el 4º** (DEBE 1150001 / HABER 3210002, doc CSEMP). CC contrapartida ADM. Glosa detalle `{RUT} CE|CP {AA} {CÁMARA}`. **Los documentos antiguos que dicen 1,44/0,48 UF están desactualizados.**
+- **Seguros (fondos de terceros, devengo mensual):** Plan Socios 1130004/3310005/PSOC · Complementario 1130003/3310003/SCOMP (UF del día 9) · Catastrófico 1130002/3310001/SCAT (UF del último día del mes anterior) · Plan Carreño 1130005/3310004/PCARR. CC contrapartida MS; Conceptos 1/2 = `99999`/`500` en todas las filas. Prima = factor UF × UF del seguro. Cada seguro usa su propia UF.
+- **Addval:** Marcos Ibarra envía el cierre diario (L-V); Addval tiene 48 h para subirlo a Manager+.
+- Banco de Chile cta. 8001104309; nóminas todos los martes; retención boletas honorarios 13,75%. Javiera Valdovinos ya no está en MundoSocios.
 
 ## Gotchas técnicos (aprendidos con costo)
 

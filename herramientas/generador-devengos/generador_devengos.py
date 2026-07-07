@@ -45,6 +45,7 @@ import argparse
 import csv
 import sys
 import unicodedata
+from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
@@ -59,28 +60,34 @@ ENCABEZADO = [
     "NumDocumento", "Concepto 1", "Concepto 2", "Concepto 3", "Concepto 4",
 ]
 
-# Cuentas y glosas por seguro (fuente: MANUAL CARGA DE DEVENGOS + handoff).
-# glosa_comprobante y glosa_detalle son texto libre en Manager+: ajustables.
+# Cuentas, glosas y conceptos por seguro. Verificado contra los archivos
+# reales DEVENGO * JUL-26.xlsx (2026-07-07): CC de contrapartida "MS",
+# conceptos fijos por seguro en TODAS las filas (Concepto 1 = 99999,
+# Concepto 2 = 500 en Plan Carreño). glosa_* son texto libre: ajustables.
 SEGUROS = {
     "PLAN SOCIOS": {
         "cuenta_cxc": "1130004", "cuenta_ingreso": "3310005",
         "tipo_doc": "PSOC", "glosa_comprobante": "P SOCIOS",
         "glosa_detalle": "P SOC", "archivo": "PLAN SOCIOS",
+        "concepto1": "99999", "concepto2": "500",
     },
     "COMPLEMENTARIO": {
         "cuenta_cxc": "1130003", "cuenta_ingreso": "3310003",
-        "tipo_doc": "SCOMP", "glosa_comprobante": "COMPLEMENTARIO",
-        "glosa_detalle": "COMP", "archivo": "COMPLEMENTARIO",
+        "tipo_doc": "SCOMP", "glosa_comprobante": "COMP",
+        "glosa_detalle": "S COM", "archivo": "COMPLEMENTARIO",
+        "concepto1": "99999", "concepto2": "500",
     },
     "CATASTROFICO": {
         "cuenta_cxc": "1130002", "cuenta_ingreso": "3310001",
-        "tipo_doc": "SCAT", "glosa_comprobante": "CATASTROFICO",
-        "glosa_detalle": "CAT", "archivo": "CATASTROFICO",
+        "tipo_doc": "SCAT", "glosa_comprobante": "S CAT",
+        "glosa_detalle": "S CAT", "archivo": "CATASTRÓFICO",
+        "concepto1": "99999", "concepto2": "500",
     },
     "PLAN CARRENO": {
         "cuenta_cxc": "1130005", "cuenta_ingreso": "3310004",
         "tipo_doc": "PCARR", "glosa_comprobante": "P CARREÑO",
         "glosa_detalle": "P CARR", "archivo": "PLAN CARREÑO",
+        "concepto1": "99999", "concepto2": "500",
     },
 }
 
@@ -135,9 +142,10 @@ def etiqueta_periodo(mes: int, anio: int) -> str:
     return f"{MESES[mes - 1]} {anio % 100:02d}"
 
 
-def fecha_contable(mes: int, anio: int) -> str:
-    """Primer día del mes, formato dd-mm-aaaa como texto (igual al manual)."""
-    return f"01-{mes:02d}-{anio}"
+def fecha_contable(mes: int, anio: int) -> date:
+    """Primer día del mes, como fecha real de Excel (igual a los archivos
+    productivos JUL-26; se escribe con formato de celda DD-MM-YYYY)."""
+    return date(anio, mes, 1)
 
 
 def monto_clp(factor_uf: Decimal, valor_uf: Decimal) -> int:
@@ -236,25 +244,27 @@ def leer_clientes(ruta: Path) -> set:
 def construir_filas(polizas, seguro: str, mes: int, anio: int, valor_uf: Decimal):
     """Arma las filas (listas de 22 celdas) del archivo de un seguro."""
     cfg = SEGUROS[seguro]
-    per = etiqueta_periodo(mes, anio)
+    per = etiqueta_periodo(mes, anio)               # "JUL 26" (comprobante)
+    per_det = per.replace(" ", "-")                 # "JUL-26" (detalle real)
     fecha = fecha_contable(mes, anio)
     glosa_comp = f"DEVENGO {cfg['glosa_comprobante']} {per}"
+    c1, c2 = cfg.get("concepto1", ""), cfg.get("concepto2", "")
     filas, total = [], 0
     for i, p in enumerate(polizas, start=1):
         monto = monto_clp(p["factor_uf"], valor_uf)
         total += monto
         filas.append([
             "T", "", glosa_comp, fecha, "", "",
-            i, "001", f"{p['rut']} {cfg['glosa_detalle']} {per}", p["rut"],
+            i, "001", f"{p['rut']} {cfg['glosa_detalle']} {per_det}", p["rut"],
             "", cfg["cuenta_cxc"], "", monto, 0, cfg["tipo_doc"], fecha,
-            "", "", "", "", "",
+            "", c1, c2, "", "",
         ])
     # Contrapartida: cuenta de ingreso, CC MS, total en HABER, sin tipo doc.
     filas.append([
         "T", "", glosa_comp, fecha, "", "",
         len(polizas) + 1, "001", glosa_comp, "",
         "", cfg["cuenta_ingreso"], "MS", 0, total, "", fecha,
-        "", "", "", "", "",
+        "", c1, c2, "", "",
     ])
     return filas, total
 
@@ -266,6 +276,10 @@ def escribir_xlsx(filas, ruta: Path):
     ws.append(ENCABEZADO)
     for fila in filas:
         ws.append(fila)
+        for col in (4, 17):  # D fecha contable, Q fecha documento
+            celda = ws.cell(row=ws.max_row, column=col)
+            if isinstance(celda.value, date):
+                celda.number_format = "DD-MM-YYYY"
     wb.save(ruta)
 
 
@@ -276,7 +290,13 @@ def main(argv=None):
     ap.add_argument("--periodo", required=True,
                     help="Período a devengar, MM-AAAA (ej: 07-2026)")
     ap.add_argument("--uf", required=True,
-                    help="Valor UF del día en CLP (ej: 39486.29)")
+                    help="Valor UF por defecto en CLP (ej: 40845)")
+    ap.add_argument("--uf-seguro", action="append", default=[],
+                    metavar="SEGURO=VALOR",
+                    help="UF específica de un seguro (repetible). Cada seguro "
+                         "usa su propia UF: complementario la del día 9, "
+                         "catastrófico la del último día del mes anterior. "
+                         "Ej: --uf-seguro 'CATASTROFICO=40763'")
     ap.add_argument("--clientes", type=Path, default=None,
                     help="CSV con RUTs existentes en Manager+ (export de clientes)")
     ap.add_argument("--salida", type=Path, default=Path("."),
@@ -284,10 +304,19 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     mes, anio = parse_periodo(args.periodo)
-    valor_uf = Decimal(args.uf.replace(",", "."))
-    if not (Decimal("10000") < valor_uf < Decimal("200000")):
-        print(f"ERROR: valor UF fuera de rango plausible: {valor_uf}", file=sys.stderr)
-        return 2
+    uf_por_seguro = {}
+    for par in args.uf_seguro:
+        if "=" not in par:
+            print(f"ERROR: --uf-seguro debe ser SEGURO=VALOR (viene {par!r})",
+                  file=sys.stderr)
+            return 2
+        nombre, valor = par.split("=", 1)
+        uf_por_seguro[normalizar_seguro(nombre)] = Decimal(valor.replace(",", "."))
+    uf_defecto = Decimal(args.uf.replace(",", "."))
+    for valor in [uf_defecto, *uf_por_seguro.values()]:
+        if not (Decimal("10000") < valor < Decimal("200000")):
+            print(f"ERROR: valor UF fuera de rango plausible: {valor}", file=sys.stderr)
+            return 2
 
     filas, errores = leer_maestro(args.maestro)
     if errores:
@@ -316,12 +345,14 @@ def main(argv=None):
         polizas = [f for f in filas if f["seguro"] == seguro]
         if not polizas:
             continue
-        cuerpo, total = construir_filas(polizas, seguro, mes, anio, valor_uf)
+        uf = uf_por_seguro.get(seguro, uf_defecto)
+        cuerpo, total = construir_filas(polizas, seguro, mes, anio, uf)
         nombre = f"DEVENGO {SEGUROS[seguro]['archivo']} {per_archivo}.xlsx"
         escribir_xlsx(cuerpo, args.salida / nombre)
         resumen.append((nombre, len(polizas), total))
 
-    print(f"Período {etiqueta_periodo(mes, anio)} — UF {valor_uf} CLP")
+    print(f"Período {etiqueta_periodo(mes, anio)} — UF por defecto {uf_defecto} CLP"
+          + (f"; específicas: {uf_por_seguro}" if uf_por_seguro else ""))
     for nombre, n, total in resumen:
         monto = f"{total:,}".replace(",", ".")
         unidad = "póliza" if n == 1 else "pólizas"
