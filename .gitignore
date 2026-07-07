@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# macOS / Office
+.DS_Store
+~$*
+
+# Credenciales y secretos
+.env
+*.token
+*_token*
+credentials*.json
+
+# Claude local
+.claude/scheduled_tasks.lock
