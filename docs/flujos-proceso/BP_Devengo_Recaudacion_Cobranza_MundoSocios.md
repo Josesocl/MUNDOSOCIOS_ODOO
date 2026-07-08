@@ -102,7 +102,7 @@ Mantenedores por seguro (`MANT. * 07-26.xlsx`) con: medio de pago (PAC/PAT/DIREC
 - Renuncias: correo de confirmación al socio antes de procesar la baja. Beneficiarios y traspasos de cuota entre empresas: Carla.
 
 ### 2.5 Conciliación bancaria (mensual, post cierre de mes)
-El archivo **PRECONCILIACIÓN** se usa para la conciliación mensual que se hace **después del "cierre de mes"**: es la cartola del período enriquecida a mano con columnas RUT/CONCEPTO/MÓDULO/CUENTA/OT/CC/LN y estado por fila. Se cuadra contra la cartola, se importa a Manager+ (conciliación automática por fecha+monto, ~78%) y el resto se concilia a mano (convenios PAC: un documento contra múltiples abonos).
+La cartola del Banco de Chile se descarga del portal **en PDF y en Excel** (el TXT no es un formato de cartola: es exclusivamente el archivo de **nómina de pagos** que se carga al banco). El archivo **PRECONCILIACIÓN** se usa para la conciliación mensual que se hace **después del "cierre de mes"**: es la cartola del período enriquecida a mano con columnas RUT/CONCEPTO/MÓDULO/CUENTA/OT/CC/LN y estado por fila. Se cuadra contra la cartola, se importa a Manager+ (conciliación automática por fecha+monto, ~78%) y el resto se concilia a mano (convenios PAC: un documento contra múltiples abonos).
 
 **Puente construido (2026-07-07):** el cruzador de pagos (`herramientas/cruzador-pagos/`) genera el borrador de la PRECONCILIACIÓN desde la cartola + resumen Transbank + maestro, clasificando movimientos y proponiendo RUT.
 

@@ -12,7 +12,7 @@ python3 cruzador_pagos.py \
   --salida ./salida
 ```
 
-Los `.xls` del banco y de Transbank son HTML disfrazado: se leen directo (también acepta `.xlsx` y CSV). Maestro: CSV con `rut;nombre` (sirve el consolidado de los mantenedores).
+La cartola del Banco de Chile se descarga del portal en **PDF y Excel**: usar siempre la versión **Excel** (su `.xls` es en realidad HTML disfrazado y el cruzador lo lee directo; también acepta `.xlsx` y CSV). El TXT no es un formato de cartola — es solo el archivo de nómina de pagos que se sube al banco. Maestro: CSV con `rut;nombre` (sirve el consolidado de los mantenedores).
 
 ## Qué hace con cada tipo de movimiento
 
