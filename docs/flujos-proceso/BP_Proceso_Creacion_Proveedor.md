@@ -1,8 +1,10 @@
 # Blueprint — Proceso de Creación de Proveedor
 
 **Proyecto:** Implementación Odoo Enterprise — MundoSocios CChC
-**Fase:** Fase 0 — Levantamiento y diseño · **Versión:** 1.1 · **Fecha:** 2026-07-07
-**Fuentes:** Manual creación de proveedores (transcrito), Checklist campos críticos del proveedor v2.0 (Fase 0), Manual nóminas de pago, ficha `01_Ficha_Proveedor_MundoSocios.xlsx`.
+**Fase:** Fase 0 — Levantamiento y diseño · **Versión:** 1.2 · **Fecha:** 2026-07-08
+**Fuentes:** Manual creación de proveedores (transcrito), Checklist campos críticos del proveedor v2.0 (Fase 0), Manual nóminas de pago, ficha `01_Ficha_Proveedor_MundoSocios.xlsx`, sesión técnica con soporte Zoho (Alexander Gutiérrez, 2026-07-07).
+
+> **v1.2:** se agrega §3b — el puente de proveedores ahora se construye también en Zoho CRM con soporte oficial (módulo de Proveedores + validación RUT + SII vía API Gateway).
 
 > **Nota:** este documento reemplaza a `BP_Proceso_Creación_Proveedor_MundoSocios.docx`, cuyo contenido quedó duplicado por error con el blueprint de Experiencia/Atención. Al copiarlo a OneDrive, eliminar o marcar como obsoleto el .docx defectuoso.
 
@@ -40,6 +42,20 @@ La calidad del maestro de proveedores es la causa raíz #1 de fallas del TXT ban
 4. En la nómina (`03_Control_Nomina_Pago_MundoSocios.xlsx`), el cruce por RUT contra la hoja Proveedores alerta discrepancias de banco/cuenta/estado **antes** de emitir el TXT (cubre RF-06b de forma interina).
 
 **Regla de avance:** ningún proveedor entra a una OC ni a una nómina sin estado APTO en la ficha.
+
+## 3b. Puente en Zoho CRM con soporte oficial (2026-07-07) *(nuevo en v1.2)*
+
+En sesión técnica con **Alexander Gutiérrez** (soporte Zoho) se acordó que el soporte oficial construye la capa de proveedores en Zoho, usando el Sandbox y tomando el Validador SII y el checklist v2.0 como especificación:
+
+- **Sandbox** habilitado con datos de productivo (aislado; envío de correos deshabilitado por defecto).
+- **Módulo de Proveedores activado** en Zoho CRM. Campos clave definidos: RUT, razón social, nombre de fantasía, giro, representante legal, contacto comercial (alineados con el checklist v2.0; falta enviar la planilla completa de campos).
+- **Validación del RUT** como regla de validación del módulo con **función personalizada** (módulo 11), no criterios simples.
+- **Verificación SII vía API Gateway** (mismo servicio del Validador): pendientes el token y la definición del proxy/alojamiento (el proxy Squid de referencia ya está desplegado en GCP).
+- El **Validador SII** (código) se envía a Alexander como referencia de comportamiento.
+
+**Pendientes de esta vía:** ¿proveedores como módulo separado o tipo de cuenta dentro de Socios? · ¿la validación SII corre al crear el registro o como automatización posterior? · habilitación de correos de prueba en Sandbox · token API Gateway (~$10.000 CLP/mes, decisión de Patricio).
+
+Cuando este módulo entre a productivo, reemplaza la ficha Excel `01_Ficha_Proveedor` como punto de alta (la regla APTO se mantiene: la valida Zoho en vez de la planilla); Manager+ sigue recibiendo el alta por digitación/exportación hasta Odoo.
 
 ## 4. Diseño futuro en Odoo (TO-BE)
 
