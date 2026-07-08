@@ -50,7 +50,18 @@ Proceso de mayor complejidad operativa de MundoSocios: generación masiva de deu
 | Seguros (primas) | ~80% | ~20% |
 | Cuota social | ~20% | ~80% |
 
-Códigos de comercio Transbank identificados: `35997075` (MUNDOSOCIOS CCHC / Webpay), `51709929` (MUNDOSOCIOS), `47630680` (CORP DE BIENESTAR Y SALUD). Cuenta de abono: Banco de Chile 8001104309.
+**Códigos de comercio Transbank** (detalle confirmado por el cliente, 2026-07-08). Cuenta de abono: Banco de Chile 8001104309.
+
+| Código | Canal | Estado |
+|---|---|---|
+| 32606164 | **PAT** (cargo automático en tarjeta) | Activo |
+| 51709929 | **Webpay Plus** (pagos en línea) | Activo |
+| 35997075 | **Webpay.cl** (portal de pagos) | Activo |
+| 38323415 | **Cobro QR** | Activo |
+| 47630680 | **Máquina** (POS presencial) | Activo |
+| 35171665 | Máquina — equipo móvil | Inactivo |
+
+> Uso operativo: en los reportes de Transbank ("Abonos por día" / detalle de ventas) el código de comercio permite **segmentar cada venta por canal** — en particular separar la recaudación PAT (32606164) de los pagos Webpay (51709929/35997075) y de los cobros presenciales, algo que la glosa de la cartola no distingue (todos llegan como un único abono "Transbank 0966893109" diario).
 
 ### 1.4 Actores del proceso
 - **Oriana Romero** (Recaudación): gestiona el ciclo completo de recaudación y cobranza.

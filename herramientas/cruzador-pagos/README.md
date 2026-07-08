@@ -31,6 +31,7 @@ Columnas de salida = las de la preconciliación manual (`Canal, Nro. Docto., Fec
 - **La cartola nunca trae RUT**: las propuestas por nombre son *propuestas*; confirmarlas contra la deuda antes de rebajar. Quien transfiere puede no ser el socio.
 - **PAC agregado**: para distribuir la recaudación PAC por socio se necesita la **rendición PAC del banco** (fuente pendiente de integrar — pedir a Marcos/banco el archivo por convenio 16/41).
 - **Ventas Transbank → socio**: los informes de Transbank no traen RUT del tarjetahabiente. El cruce determinístico requiere guardar el token de orden Webpay al generar el cobro (hoy la identificación se hace a mano en `06 TRANSBANK`).
+- **Segmentación por canal (mejora v2)**: el "Código de comercio" del detalle de ventas permite clasificar cada venta por canal — 32606164 PAT · 51709929 Webpay Plus · 35997075 Webpay.cl · 38323415 Cobro QR · 47630680 Máquina POS (35171665 inactivo). Con eso el borrador puede separar la recaudación PAT de los pagos Webpay y presenciales dentro de un mismo abono diario.
 - Los abonos del 1-2 del mes pueden no cuadrar 1:1 por arrastre de ventas de fin de mes → quedan marcados "SIN CUADRE" para revisión, no se inventa el match.
 
 ## Tests
