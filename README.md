@@ -18,6 +18,13 @@ Los materiales de trabajo del proyecto viven hoy en OneDrive:
 - `herramientas/cruzador-pagos/` — genera el borrador de PRECONCILIACIÓN desde la cartola Banco de Chile + resumen Transbank + maestro: clasifica movimientos, cuadra abonos Transbank y propone RUT para transferencias por match de nombre. 7 tests.
 - `.claude/skills/mundosocios-context/` — contexto del proyecto para sesiones de Claude.
 
+## Documentos migrados desde OneDrive
+
+- `docs/handoff/` — `00_HANDOFF_Contexto_Proyecto_MundoSocios.md` (con notas de actualización 2026-07-07/08) y `Analisis_Ficha_Requerimientos_Odoo_Mexico_MundoSocios.md`.
+- `docs/entregables-sow/` — los 5 entregables del SOW en `.md` (E1 diagnóstico, E2 quick wins, E3 requerimientos Odoo, E4 gestión del cambio, E5 guía de entrevistas), copia textual de OneDrive; las correcciones conocidas están anotadas en `docs/correcciones/`.
+
 ## Pendiente de migrar desde OneDrive
 
-Entregables SOW y manuales en `.md`, Validador SII (código + tests) y proxy — ver mejora #13 de la evaluación. OneDrive queda para binarios de intercambio con el cliente (.docx/.xlsx/.pptx).
+- `FLUJOS DE PROCESO/*.md` (manuales transcritos y flujos) y `Automatizacion Puente Compras/` (Fase 0, diseño de referencia y Build) — misma mecánica de copia textual.
+- **Validador SII (código Python)**: el conector de OneDrive no permite leer archivos `.py`; migrarlo desde el Mac (copiar la carpeta al repo y hacer commit).
+- La versión maestra de todo sigue en OneDrive; ante diferencias, manda OneDrive.
