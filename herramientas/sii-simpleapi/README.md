@@ -33,16 +33,25 @@ python3 cliente_simpleapi.py --rut ... --mock      # prueba sin red ni cuota
 
 Protecciones incorporadas: RUT validado con módulo 11 antes de gastar cuota · caché en disco 90 días · contador mensual con bloqueo (y `--forzar` explícito) · errores con mensaje claro (sin key, cuota agotada, HTTP).
 
-## Configuración confirmada (2026-07-31) y pendiente
+## Configuración confirmada (2026-07-31, colección Postman oficial)
 
-Confirmado por la documentación oficial:
-- **URL base:** `https://api.simpleapi.cl` ✔
-- **Autenticación:** header `Authorization` con la API key directa (sin `Bearer`) ✔
+Extraída de la colección Postman publicada en `documentacion.simpleapi.cl` (73 endpoints; script `extraer_endpoints_docs.py` de esta carpeta):
 
-Pendiente (5 minutos, desde el Mac): la **ruta exacta del endpoint de la API RUT** — buscar en la sección "API RUT" de `documentacion.simpleapi.cl` y setear si difiere del default:
-```bash
-export SIMPLEAPI_RUTA_RUT="/ruta/real/{rut}"     # default: /api/RUT/{rut}
-```
+- **API RUT ("ObtenerDatos v2"):** `GET https://rut.simpleapi.cl/v2/{rut}` — RUT sin puntos, con guión (ej: `76192083-9`). Host propio, distinto del resto.
+- **Autenticación:** header `Authorization` con la API key directa (sin `Bearer`).
+- Override por si SimpleAPI cambia la URL: `export SIMPLEAPI_URL_RUT="https://.../{rut}"`.
+
+Hosts de las demás APIs contratadas (para cuando se integren):
+
+| API | Endpoint |
+|---|---|
+| DTE (generar/enviar/consultar) | `https://api.simpleapi.cl/api/v1/...` — usa Bearer token de `GET /api/auth/token` |
+| RCV compras/ventas | `POST https://servicios.simpleapi.cl/api/RCV/compras/{MM}/{AAAA}` (y `/ventas/...`, también por día `{DD}/{MM}/{AAAA}`) |
+| BHE Personas | `https://servicios.simpleapi.cl/api/bhe/...` (listados: `POST /api/bhe/listado/recibidas/{MM}/{AAAA}`) |
+| BHE Empresas | `https://servicios.simpleapi.cl/api/bheempresas/...` |
+| Folios | `POST https://servicios.simpleapi.cl/api/folios/...` |
+| Mapas | `POST https://servicios.simpleapi.cl/api/mapas/...` |
+
 Primera prueba sugerida: 2 RUTs conocidos (uno vigente y el de la Corporación, 65.091.028-1) comparando contra `zeus.sii.cl` — gasta 2 de las 10 consultas del mes y de paso confirma los nombres de los campos JSON de la respuesta.
 
 ## Integraciones que deben apuntar a SimpleAPI (no API Gateway)

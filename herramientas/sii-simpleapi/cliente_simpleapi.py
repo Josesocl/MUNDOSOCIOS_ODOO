@@ -23,12 +23,15 @@ Uso:
     python3 cliente_simpleapi.py --rut 76123456-7 --mock   # sin red ni cuota
     python3 cliente_simpleapi.py --estado                  # cuota usada del mes
 
-CONFIGURACIÓN (confirmada por la documentación oficial, 2026-07-31):
-  - URL base: https://api.simpleapi.cl        [CONFIRMADO]
+CONFIGURACIÓN (confirmada contra la colección Postman oficial de
+documentacion.simpleapi.cl, extraída el 2026-07-31):
+  - Endpoint API RUT ("ObtenerDatos v2"):
+        GET https://rut.simpleapi.cl/v2/{rut}
+    con el RUT sin puntos y con guión (ej: 76192083-9).
   - Autenticación: header 'Authorization' con la API key directa,
-    sin prefijo 'Bearer'.                      [CONFIRMADO]
-  - RUTA_RUT: ruta del endpoint de la API RUT  [POR CONFIRMAR — ajustar
-    con SIMPLEAPI_RUTA_RUT según la sección "API RUT" de la doc].
+    sin prefijo 'Bearer'.
+  - La API RUT vive en su propio host (rut.simpleapi.cl), distinto de
+    api.simpleapi.cl (DTE) y servicios.simpleapi.cl (RCV/BHE/Folios).
 """
 
 import argparse
@@ -43,24 +46,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "generador-devengos"))
 import rut_utils
 
-# --- Configuración ---
-BASE_URL = os.environ.get("SIMPLEAPI_BASE_URL", "https://api.simpleapi.cl")  # confirmado
-CABECERA_AUTH = os.environ.get("SIMPLEAPI_CABECERA_AUTH", "Authorization")   # confirmado (key directa)
-RUTA_RUT = os.environ.get("SIMPLEAPI_RUTA_RUT", "/api/RUT/{rut}")            # POR CONFIRMAR en la doc
+# --- Configuración (confirmada, colección Postman oficial 2026-07-31) ---
+URL_RUT = os.environ.get("SIMPLEAPI_URL_RUT", "https://rut.simpleapi.cl/v2/{rut}")
+CABECERA_AUTH = os.environ.get("SIMPLEAPI_CABECERA_AUTH", "Authorization")
 
 LIMITE_MENSUAL_RUT = 10          # plan contratado (API RUT)
 DIAS_CACHE = 90
 ARCHIVO_ESTADO = Path(__file__).with_name(".estado_simpleapi.json")
-
-# Rutas candidatas para --descubrir (las 404 no consumen cuota: la ruta
-# no existe, la consulta nunca llega al producto API RUT).
-RUTAS_CANDIDATAS = [
-    "/api/RUT/{rut}", "/api/rut/{rut}", "/api/Rut/{rut}",
-    "/api/v1/rut/{rut}", "/api/RUT/consultar/{rut}",
-    "/api/rut/consultar/{rut}", "/api/contribuyente/{rut}",
-    "/api/contribuyentes/{rut}", "/api/RUT/contribuyente/{rut}",
-    "/api/sii/rut/{rut}", "/rut/{rut}",
-]
 
 
 def _cargar_estado():
@@ -122,7 +114,7 @@ def consultar_rut(rut, api_key=None, mock=False, forzar=False, hoy=None,
         raise RuntimeError("Falta la API key: exporte SIMPLEAPI_API_KEY "
                            "(nunca la escriba en código ni documentos).")
 
-    url = BASE_URL.rstrip("/") + RUTA_RUT.format(rut=rut)
+    url = URL_RUT.format(rut=rut)
     peticion = urllib.request.Request(url, headers={CABECERA_AUTH: api_key,
                                                    "Accept": "application/json"})
     try:
@@ -142,69 +134,13 @@ def consultar_rut(rut, api_key=None, mock=False, forzar=False, hoy=None,
     return datos, "api"
 
 
-def descubrir_ruta(rut, api_key=None, _abrir=urllib.request.urlopen):
-    """Prueba las rutas candidatas hasta encontrar la que responde 200.
-    Devuelve (ruta, datos) o (None, None). Imprime el avance."""
-    rut = rut_utils.normalizar(rut)
-    api_key = api_key or os.environ.get("SIMPLEAPI_API_KEY")
-    if not api_key:
-        raise RuntimeError("Falta la API key: exporte SIMPLEAPI_API_KEY.")
-    for ruta in RUTAS_CANDIDATAS:
-        url = BASE_URL.rstrip("/") + ruta.format(rut=rut)
-        peticion = urllib.request.Request(url, headers={CABECERA_AUTH: api_key,
-                                                        "Accept": "application/json"})
-        try:
-            with _abrir(peticion, timeout=20) as resp:
-                cuerpo = resp.read().decode("utf-8", errors="replace")
-            print(f"  ✔ {ruta} → HTTP 200")
-            try:
-                return ruta, json.loads(cuerpo)
-            except json.JSONDecodeError:
-                return ruta, {"_respuesta_no_json": cuerpo[:500]}
-        except urllib.error.HTTPError as e:
-            marca = "404" if e.code == 404 else f"{e.code} (¡la ruta existe! revisar auth/método)"
-            print(f"  ✘ {ruta} → HTTP {marca}")
-            if e.code in (401, 403, 405):
-                return ruta, None
-        except urllib.error.URLError as e:
-            print(f"  ✘ {ruta} → sin conexión: {e.reason}")
-            return None, None
-    return None, None
-
-
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Consulta RUT vía SimpleAPI (SII)")
     ap.add_argument("--rut")
     ap.add_argument("--mock", action="store_true", help="respuesta simulada, sin red ni cuota")
     ap.add_argument("--forzar", action="store_true", help="ignora el límite mensual")
     ap.add_argument("--estado", action="store_true", help="muestra cuota usada del mes")
-    ap.add_argument("--descubrir", action="store_true",
-                    help="prueba rutas candidatas del endpoint hasta dar con la correcta")
     args = ap.parse_args(argv)
-
-    if args.descubrir:
-        if not args.rut:
-            ap.error("--descubrir requiere --rut")
-        try:
-            ruta, datos = descubrir_ruta(args.rut)
-        except RuntimeError as e:
-            print(f"ERROR: {e}", file=sys.stderr)
-            return 1
-        if ruta and datos is not None:
-            print(f"\nRUTA ENCONTRADA: {ruta}")
-            print("Déjela fija con:")
-            print(f'  export SIMPLEAPI_RUTA_RUT="{ruta}"')
-            print("\nRespuesta:")
-            print(json.dumps(datos, ensure_ascii=False, indent=2))
-            return 0
-        if ruta:
-            print(f"\nLa ruta {ruta} existe pero rechazó la consulta: revisar "
-                  "API key vigente, método HTTP o formato del RUT en la "
-                  "documentación oficial.")
-            return 1
-        print("\nNinguna ruta candidata respondió. Copiar el ejemplo de "
-              "request de la sección 'API RUT' de documentacion.simpleapi.cl.")
-        return 1
 
     if args.estado:
         estado = _cargar_estado()
