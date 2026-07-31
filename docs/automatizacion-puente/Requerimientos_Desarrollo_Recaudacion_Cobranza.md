@@ -34,7 +34,7 @@
 ### Del equipo MS (Oriana / Carla)
 | # | Insumo | Para qué | Bloquea |
 |---|---|---|---|
-| I-06 | **Maestro único consolidado**: los 6 mantenedores (4 seguros + cuota social empresa/persona) en un solo archivo con RUT, nombre, producto, factor UF/miembros, medio de pago, estado PAC/PAT, cámara, correo | Fuente única de generadores, cruzador y listas de cobranza; después, carga inicial de Odoo | **Todo** (es el insumo central) |
+| I-06 | **Maestro único consolidado**: los 6 mantenedores (4 seguros + cuota social empresa/persona) en un solo archivo con RUT, nombre, producto, factor UF/miembros, medio de pago, estado PAC/PAT, cámara, correo | Fuente única de generadores, cruzador y listas de cobranza; después, carga inicial de Odoo | **Resuelta la herramienta (2026-07-31)**: `herramientas/consolidador-maestro/` lo genera automáticamente desde los 6 mantenedores (layout real levantado; 5 tests + cadena completa probada). Falta la **primera corrida con los archivos reales** en el equipo del consultor/MS. Nota: ningún mantenedor trae correo — el correo de cobranza vendrá de otra fuente (Zoho/export Manager+) |
 | I-07 | Base **"PAC activos"** (la que comparte Oriana) y su fecha de corte | Completar el maestro con el estado real de convenios | I-06 |
 | I-08 | **Textos aprobados** de correos de cobro, recordatorio, rechazo y comunicados de eliminación (los que ya usan) | Plantillas de Zoho Campaigns con métricas | Cobranza con métricas |
 | I-09 | La **PRECONCILIACIÓN de junio ya conciliada** (existe en la carpeta) | Calibrar el cruzador comparando su borrador contra el resultado manual | Calibración (sin costo extra) |
