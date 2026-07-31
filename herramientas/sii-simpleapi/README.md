@@ -33,15 +33,17 @@ python3 cliente_simpleapi.py --rut ... --mock      # prueba sin red ni cuota
 
 Protecciones incorporadas: RUT validado con módulo 11 antes de gastar cuota · caché en disco 90 días · contador mensual con bloqueo (y `--forzar` explícito) · errores con mensaje claro (sin key, cuota agotada, HTTP).
 
-## ⚠️ Pendiente de confirmar (primera ejecución real, desde el Mac)
+## Configuración confirmada (2026-07-31) y pendiente
 
-La red del entorno donde se escribió este cliente bloquea `simpleapi.cl`, así que **la URL del endpoint y la cabecera de autenticación están como valores por defecto razonables y deben confirmarse** contra la documentación oficial (`documentacion.simpleapi.cl`):
+Confirmado por la documentación oficial:
+- **URL base:** `https://api.simpleapi.cl` ✔
+- **Autenticación:** header `Authorization` con la API key directa (sin `Bearer`) ✔
 
-1. `SIMPLEAPI_BASE_URL` (default `https://servicios.simpleapi.cl`)
-2. `SIMPLEAPI_RUTA_RUT` (default `/api/RUT/{rut}`)
-3. `SIMPLEAPI_CABECERA_AUTH` (default `Authorization`)
-
-Si difieren, se ajustan por variable de entorno sin tocar el código. Primera prueba sugerida: 2 RUTs conocidos (uno vigente y el de la Corporación) y comparar contra `zeus.sii.cl` — gasta 2 de las 10 consultas del mes.
+Pendiente (5 minutos, desde el Mac): la **ruta exacta del endpoint de la API RUT** — buscar en la sección "API RUT" de `documentacion.simpleapi.cl` y setear si difiere del default:
+```bash
+export SIMPLEAPI_RUTA_RUT="/ruta/real/{rut}"     # default: /api/RUT/{rut}
+```
+Primera prueba sugerida: 2 RUTs conocidos (uno vigente y el de la Corporación, 65.091.028-1) comparando contra `zeus.sii.cl` — gasta 2 de las 10 consultas del mes y de paso confirma los nombres de los campos JSON de la respuesta.
 
 ## Integraciones que deben apuntar a SimpleAPI (no API Gateway)
 

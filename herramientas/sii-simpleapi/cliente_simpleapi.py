@@ -23,12 +23,12 @@ Uso:
     python3 cliente_simpleapi.py --rut 76123456-7 --mock   # sin red ni cuota
     python3 cliente_simpleapi.py --estado                  # cuota usada del mes
 
-NOTA DE CONFIGURACIÓN: los valores de BASE_URL, RUTA_RUT y CABECERA_AUTH
-están tomados de la estructura pública habitual de SimpleAPI y deben
-CONFIRMARSE contra la documentación oficial (documentacion.simpleapi.cl,
-no accesible desde el entorno donde se escribió este cliente). Si
-difieren, basta ajustar las tres constantes o las variables de entorno
-SIMPLEAPI_BASE_URL / SIMPLEAPI_RUTA_RUT / SIMPLEAPI_CABECERA_AUTH.
+CONFIGURACIÓN (confirmada por la documentación oficial, 2026-07-31):
+  - URL base: https://api.simpleapi.cl        [CONFIRMADO]
+  - Autenticación: header 'Authorization' con la API key directa,
+    sin prefijo 'Bearer'.                      [CONFIRMADO]
+  - RUTA_RUT: ruta del endpoint de la API RUT  [POR CONFIRMAR — ajustar
+    con SIMPLEAPI_RUTA_RUT según la sección "API RUT" de la doc].
 """
 
 import argparse
@@ -43,10 +43,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "generador-devengos"))
 import rut_utils
 
-# --- Configuración (confirmar contra la documentación oficial) ---
-BASE_URL = os.environ.get("SIMPLEAPI_BASE_URL", "https://servicios.simpleapi.cl")
-RUTA_RUT = os.environ.get("SIMPLEAPI_RUTA_RUT", "/api/RUT/{rut}")
-CABECERA_AUTH = os.environ.get("SIMPLEAPI_CABECERA_AUTH", "Authorization")
+# --- Configuración ---
+BASE_URL = os.environ.get("SIMPLEAPI_BASE_URL", "https://api.simpleapi.cl")  # confirmado
+CABECERA_AUTH = os.environ.get("SIMPLEAPI_CABECERA_AUTH", "Authorization")   # confirmado (key directa)
+RUTA_RUT = os.environ.get("SIMPLEAPI_RUTA_RUT", "/api/RUT/{rut}")            # POR CONFIRMAR en la doc
 
 LIMITE_MENSUAL_RUT = 10          # plan contratado (API RUT)
 DIAS_CACHE = 90
