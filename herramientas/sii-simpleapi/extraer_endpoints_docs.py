@@ -1,112 +1,125 @@
 #!/usr/bin/env python3
-"""Extrae los endpoints de la documentación de SimpleAPI.
+"""Extrae los endpoints de la documentación de SimpleAPI (v2).
 
-Descarga documentacion.simpleapi.cl (y sus archivos JS/JSON, donde las
-documentaciones tipo SPA guardan el texto), busca todas las URLs y rutas
-de API que contengan, y las imprime agrupadas — en particular las de la
-API RUT. No usa la API key ni consume cuota: solo lee la documentación
-pública.
+La documentación (documentacion.simpleapi.cl) es una colección de
+Postman publicada. Este script descarga el JSON completo de la
+colección y lista todos los requests: nombre, método y URL — con
+detalle extra (headers, body) para los que mencionan RUT.
+
+También guarda la colección completa en `docs_simpleapi_collection.json`
+por si hace falta revisarla después.
+
+No usa la API key ni consume cuota: solo lee documentación pública.
 
 Uso (desde el Mac, con internet normal):
     python3 extraer_endpoints_docs.py
 """
 
+import html
+import json
 import re
 import sys
-import urllib.parse
 import urllib.request
+from pathlib import Path
 
 BASE = "https://documentacion.simpleapi.cl"
+# Enlace descubierto en la página principal (fallback si cambia: se
+# vuelve a buscar dinámicamente).
+COLECCION_FALLBACK = ("/api/collections/13819912/UVJk9smg"
+                      "?environment=13819912-e04c1727-3153-4a7b-9d0a-bb085d8ad8d9"
+                      "&segregateAuth=true&versionTag=latest")
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36")
-MAX_ASSETS = 40
+SALIDA_JSON = Path(__file__).with_name("docs_simpleapi_collection.json")
 
 
-def bajar(url, binario=False):
+def bajar(url):
     req = urllib.request.Request(url, headers={"User-Agent": UA,
                                                "Accept": "*/*"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        datos = r.read()
-    return datos if binario else datos.decode("utf-8", errors="replace")
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return r.read().decode("utf-8", errors="replace")
 
 
-def assets_de(html, base):
-    urls = set()
-    for m in re.finditer(r'(?:src|href)=["\']([^"\']+\.(?:js|json))(?:\?[^"\']*)?["\']', html):
-        urls.add(urllib.parse.urljoin(base + "/", m.group(1)))
-    return sorted(urls)
+def url_coleccion():
+    try:
+        pagina = html.unescape(bajar(BASE))
+        m = re.search(r'(/api/collections/[^\s"\'<>]+)', pagina)
+        if m:
+            return BASE + m.group(1)
+    except Exception:
+        pass
+    return BASE + COLECCION_FALLBACK
 
 
-PATRONES = [
-    re.compile(r'https?://[a-z0-9.\-]*simpleapi[a-z0-9.\-]*\.cl[^\s"\'<>\\)]*',
-               re.IGNORECASE),
-    re.compile(r'["\'](/(?:api|servicios)/[^\s"\'<>\\]{2,120})["\']'),
-]
+def _url_de(request):
+    u = request.get("url")
+    if isinstance(u, str):
+        return u
+    if isinstance(u, dict):
+        return u.get("raw") or "/".join(u.get("path", []))
+    return "(sin url)"
 
 
-def rutas_en(texto):
-    encontradas = set()
-    for pat in PATRONES:
-        for m in pat.finditer(texto):
-            r = m.group(1) if pat.groups else m.group(0)
-            r = r.rstrip('\\').rstrip('.,;')
-            if len(r) < 200:
-                encontradas.add(r)
-    return encontradas
+def caminar(items, ruta, encontrados):
+    for it in items or []:
+        nombre = it.get("name", "(sin nombre)")
+        if "item" in it:                      # carpeta
+            caminar(it["item"], ruta + [nombre], encontrados)
+        elif "request" in it:
+            req = it["request"] or {}
+            encontrados.append({
+                "carpeta": " > ".join(ruta),
+                "nombre": nombre,
+                "metodo": req.get("method", "?"),
+                "url": _url_de(req),
+                "headers": [f"{h.get('key')}: {h.get('value')}"
+                            for h in req.get("header", []) or []],
+                "body": (req.get("body") or {}).get("raw", "")[:400],
+            })
 
 
 def main():
-    print(f"Descargando {BASE} ...")
+    url = url_coleccion()
+    print(f"Descargando la colección: {url}")
     try:
-        html = bajar(BASE)
+        crudo = bajar(url)
+        datos = json.loads(crudo)
     except Exception as e:
-        print(f"ERROR: no se pudo descargar la documentación: {e}",
+        print(f"ERROR: no se pudo descargar/parsear la colección: {e}",
               file=sys.stderr)
         return 1
 
-    textos = [("(página principal)", html)]
-    assets = assets_de(html, BASE)
-    print(f"  {len(assets)} archivos JS/JSON referenciados; descargando "
-          f"hasta {MAX_ASSETS}...")
-    for url in assets[:MAX_ASSETS]:
-        try:
-            textos.append((url, bajar(url)))
-        except Exception as e:
-            print(f"  (no se pudo bajar {url}: {e})")
+    SALIDA_JSON.write_text(crudo)
+    print(f"Colección guardada en {SALIDA_JSON.name}")
 
-    # sitemap por si la doc es multipágina
-    for extra in ("/sitemap.xml", "/sitemap-pages.xml"):
-        try:
-            sm = bajar(BASE + extra)
-            paginas = re.findall(r"<loc>([^<]+)</loc>", sm)
-            print(f"  sitemap {extra}: {len(paginas)} páginas")
-            for p in paginas[:MAX_ASSETS]:
-                try:
-                    textos.append((p, bajar(p)))
-                except Exception:
-                    pass
-        except Exception:
-            pass
+    col = datos.get("collection", datos)
+    info = col.get("info", {})
+    print(f"Colección: {info.get('name', '(sin nombre)')}\n")
 
-    todas = set()
-    for _, t in textos:
-        todas |= rutas_en(t)
-
-    if not todas:
-        print("\nNo se encontraron rutas de API en el contenido descargado.")
-        print("La documentación carga el texto de otra forma; abrirla en el "
-              "navegador y copiar el ejemplo de la sección 'API RUT'.")
+    encontrados = []
+    caminar(col.get("item"), [], encontrados)
+    if not encontrados:
+        print("No se encontraron requests en la colección; enviar el "
+              f"archivo {SALIDA_JSON.name} al chat.")
         return 1
 
-    con_rut = sorted(r for r in todas if "rut" in r.lower())
-    resto = sorted(todas - set(con_rut))
+    con_rut = [e for e in encontrados
+               if "rut" in (e["carpeta"] + e["nombre"] + e["url"]).lower()]
 
-    print("\n=== Rutas que mencionan RUT ===")
-    for r in con_rut or ["(ninguna)"]:
-        print(f"  {r}")
-    print("\n=== Todas las demás rutas/URLs encontradas ===")
-    for r in resto:
-        print(f"  {r}")
+    print(f"=== {len(encontrados)} endpoints en total ===")
+    for e in encontrados:
+        print(f"  [{e['metodo']:6s}] {e['carpeta']} > {e['nombre']}")
+        print(f"           {e['url']}")
+
+    print(f"\n=== Detalle de los que mencionan RUT ({len(con_rut)}) ===")
+    for e in con_rut:
+        print(f"\n  {e['carpeta']} > {e['nombre']}")
+        print(f"  {e['metodo']} {e['url']}")
+        for h in e["headers"]:
+            print(f"    header {h}")
+        if e["body"]:
+            print(f"    body: {e['body']}")
+
     print("\nCopie TODA esta salida y péguela en el chat.")
     return 0
 
