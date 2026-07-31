@@ -126,9 +126,10 @@ class TestConsolidador(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def _correr(self):
+    def _correr(self, *extra):
         rc = cm.main(["--carpeta", str(self.carpeta),
-                      "--salida", str(self.salida)])
+                      "--salida", str(self.salida),
+                      "--con-cuota-social", *extra])
         self.assertEqual(rc, 0)
 
     def test_consolida_y_corta_en_la_nomina_pac(self):
@@ -185,6 +186,19 @@ class TestConsolidador(unittest.TestCase):
         # sin COMPLEMENTARIO en la carpeta: corre igual
         self._correr()
         self.assertTrue((self.salida / "MAESTRO_UNICO_MS.xlsx").exists())
+
+    def test_por_defecto_omite_cuota_social(self):
+        # Decisión 2026-07-31: cuota social fuera del ciclo mensual.
+        rc = cm.main(["--carpeta", str(self.carpeta),
+                      "--salida", str(self.salida)])
+        self.assertEqual(rc, 0)
+        self.assertFalse((self.salida / "maestro_cuota_social.csv").exists())
+        wb = load_workbook(self.salida / "MAESTRO_UNICO_MS.xlsx")
+        productos = {f[2] for f in
+                     wb["MAESTRO"].iter_rows(min_row=2, values_only=True)}
+        self.assertNotIn("CUOTA SOCIAL EMPRESA", productos)
+        self.assertNotIn("CUOTA SOCIAL PERSONA", productos)
+        self.assertIn("PLAN SOCIOS", productos)
 
     def test_catastrofico_encabezado_con_primera_celda_vacia(self):
         self._correr()

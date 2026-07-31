@@ -41,23 +41,22 @@
 
 **Responsable:** Oriana.
 
-1. Actualizar como siempre los 6 mantenedores del mes en OneDrive (`FLUJOS DE PROCESO/RECAUDACIÓN Y COBRANZA/`):
+1. Actualizar como siempre los 4 mantenedores de seguros del mes en OneDrive (`FLUJOS DE PROCESO/RECAUDACIÓN Y COBRANZA/`):
    - `MANT. PLAN SOCIOS 07-26.xlsx`
    - `MANT. COMPLEMENTARIO 07-26.xlsx`
    - `MANT. CATASTRÓFICO 07-26.xlsx`
    - `MANT. PLAN CARREÑO 07-26.xlsx`
-   - `Mantenedor Cuota Social empresa.xlsx`
-   - `Mantenedor Cuota Social persona.xlsx`
-   *(el nombre cambia de mes: 07-26, 08-26, …)*
+   *(el nombre cambia de mes: 07-26, 08-26, … Los mantenedores de Cuota Social NO participan del ciclo mensual — decisión 2026-07-31; solo se usan para el devengo anual, ver §3.)*
 2. Generar el maestro único:
    ```bash
    cd "Documentos/AutomatizacionMS/herramientas/consolidador-maestro"
    python3 consolidador_maestro.py --carpeta "RUTA A LA CARPETA RECAUDACIÓN Y COBRANZA" --salida "../../2026-08"
    ```
-3. **Qué debe ver:** un resumen por mantenedor (filas leídas, filas incorporadas, avisos) y dos archivos nuevos en la carpeta del mes:
-   - `MAESTRO_UNICO_MS.xlsx` — todos los productos por socio (para revisión humana).
-   - `maestro_seguros.csv` y `maestro_cuota_social.csv` — los insumos que usan los generadores.
-4. **Control:** el resumen imprime el total de registros por producto. Compárelo contra el conteo de cada mantenedor. Si un producto trae 0 filas, el mantenedor cambió de formato: no siga, reporte.
+3. **Qué debe ver:** un resumen por mantenedor (filas leídas, avisos, duplicados) y dos archivos nuevos en la carpeta del mes:
+   - `MAESTRO_UNICO_MS.xlsx` — todas las pólizas por socio (para revisión humana).
+   - `maestro_seguros.csv` — el insumo que usan el generador de devengos y el cruzador.
+4. **Control:** el resumen imprime el total de registros por producto (referencia julio-26: Plan Socios 201 · Complementario 467 · Catastrófico 577 · Carreño 32). Si un producto trae 0 filas o un conteo muy distinto, el mantenedor cambió de formato: no siga, reporte.
+5. **Qué lee y qué no:** de cada mantenedor se consolida **solo la hoja principal** (las pólizas vigentes). Las hojas `PAC MM-AA`, `PAT MM-AA` y `ELIMINADOS` se excluyen a propósito: los eliminados no se devengan, y las nóminas PAC/PAT son el registro de cobros de un mes (alimentarán el distribuidor PAC y los rechazos cuando se construyan, no el maestro).
 
 ### Paso 2 (después del día 9): generar los 4 devengos de seguros
 
@@ -122,9 +121,11 @@ python3 cliente_simpleapi.py --rut 76123456-7
 
 ---
 
-## 3. Ciclo anual (solo enero): devengo de cuota social
+## 3. Ciclo anual (solo diciembre-enero): devengo de cuota social
 
-1. Oriana actualiza `Mantenedor Cuota Social empresa.xlsx` (con N° de miembros por empresa) y `Mantenedor Cuota Social persona.xlsx`; se regenera el maestro (Paso 1).
+> Durante el año la cuota social queda **fuera** de la automatización (decisión 2026-07-31). Se retoma en diciembre para preparar el devengo anual.
+
+1. Oriana actualiza `Mantenedor Cuota Social empresa.xlsx` (con N° de miembros por empresa) y `Mantenedor Cuota Social persona.xlsx`; se regenera el maestro **agregando la opción** `--con-cuota-social` al comando del Paso 1 (eso produce además `maestro_cuota_social.csv`).
 2. Con la UF de cierre que defina Patricio (pendiente D-02: enero/febrero/marzo):
    ```bash
    cd "Documentos/AutomatizacionMS/herramientas/generador-devengos"
@@ -152,7 +153,7 @@ python3 cliente_simpleapi.py --rut 76123456-7
 
 | Cuándo | Qué | Comando/acción | Quién |
 |---|---|---|---|
-| Día 1-9 | Mantenedores del mes + maestro único | `consolidador_maestro.py` | Oriana |
+| Día 1-9 | Mantenedores de seguros del mes + maestro único (sin cuota social) | `consolidador_maestro.py` | Oriana |
 | Día 9-12 | 4 devengos de seguros + carga | `generador_devengos.py` → Importador Manager+ | Devengos de hoy |
 | Día 1-5 (mes sgte.) | Borrador de preconciliación | `cruzador_pagos.py` → revisión humana → `NN PRECONCILIACIÓN MES 26.xlsx` | Fran/Oriana (insumos: Marcos) |
 | Por evento | Verificación SII proveedor | `cliente_simpleapi.py --rut ...` | Cecilia/tesorería |

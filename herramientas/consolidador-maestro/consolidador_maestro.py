@@ -356,17 +356,18 @@ def escribir_salidas(seguros, cs, salida):
             w.writerow([s["rut"], s["nombre"], s["seguro"], factor,
                         s["medio_pago"]])
 
-    # --- maestro_cuota_social.csv ---
-    with open(salida / "maestro_cuota_social.csv", "w", newline="",
-              encoding="utf-8-sig") as f:
-        w = csv.writer(f, delimiter=";")
-        w.writerow(["rut", "nombre", "tipo_socio", "camara", "miembros",
-                    "monto_clp"])
-        for c in cs:
-            if "RUT INVALIDO" in c["observacion"]:
-                continue
-            w.writerow([c["rut"], c["nombre"], c["tipo_socio"], c["camara"],
-                        c["miembros"], c["monto_clp"]])
+    # --- maestro_cuota_social.csv (solo si se consolidó cuota social) ---
+    if cs:
+        with open(salida / "maestro_cuota_social.csv", "w", newline="",
+                  encoding="utf-8-sig") as f:
+            w = csv.writer(f, delimiter=";")
+            w.writerow(["rut", "nombre", "tipo_socio", "camara", "miembros",
+                        "monto_clp"])
+            for c in cs:
+                if "RUT INVALIDO" in c["observacion"]:
+                    continue
+                w.writerow([c["rut"], c["nombre"], c["tipo_socio"], c["camara"],
+                            c["miembros"], c["monto_clp"]])
 
     return conteo, con_obs
 
@@ -375,8 +376,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(
         description="Consolida los 6 mantenedores en el maestro único (I-06)")
     ap.add_argument("--carpeta", type=Path, required=True,
-                    help="Carpeta con los 6 mantenedores (RECAUDACIÓN Y COBRANZA)")
+                    help="Carpeta con los mantenedores (RECAUDACIÓN Y COBRANZA)")
     ap.add_argument("--salida", type=Path, default=Path("."))
+    ap.add_argument("--con-cuota-social", action="store_true",
+                    help="Incluir los mantenedores de Cuota Social "
+                         "(solo se necesita para el devengo anual de enero; "
+                         "decisión 2026-07-31: fuera del ciclo mensual)")
     args = ap.parse_args(argv)
 
     if not args.carpeta.is_dir():
@@ -399,17 +404,21 @@ def main(argv=None):
         print(f"  {ruta.name}: {len(filas)} pólizas")
         seguros += filas
 
-    for tipo, patron in (("EMPRESA", CS_EMPRESA), ("PERSONA", CS_PERSONA)):
-        candidatos = [p for p in archivos if patron.search(_norm(p.name))]
-        if not candidatos:
-            avisos.append(f"FALTA el mantenedor de Cuota Social {tipo.lower()}")
-            continue
-        ruta = sorted(candidatos)[-1]
-        filas, avs = leer_cuota_social(ruta, tipo)
-        avisos += avs
-        filas = _dedup(filas, lambda f: f["rut"], avisos, ruta.name)
-        print(f"  {ruta.name}: {len(filas)} socios")
-        cs += filas
+    if args.con_cuota_social:
+        for tipo, patron in (("EMPRESA", CS_EMPRESA), ("PERSONA", CS_PERSONA)):
+            candidatos = [p for p in archivos if patron.search(_norm(p.name))]
+            if not candidatos:
+                avisos.append(f"FALTA el mantenedor de Cuota Social {tipo.lower()}")
+                continue
+            ruta = sorted(candidatos)[-1]
+            filas, avs = leer_cuota_social(ruta, tipo)
+            avisos += avs
+            filas = _dedup(filas, lambda f: f["rut"], avisos, ruta.name)
+            print(f"  {ruta.name}: {len(filas)} socios")
+            cs += filas
+    else:
+        print("  Cuota social: omitida (ciclo mensual; usar --con-cuota-social "
+              "solo para el devengo anual)")
 
     if not seguros and not cs:
         print("ERROR: no se pudo leer ningún mantenedor.", file=sys.stderr)
@@ -426,7 +435,10 @@ def main(argv=None):
         for a in avisos:
             print(f"  - {a}")
     print(f"\nSalida en {args.salida.resolve()}:")
-    print("  MAESTRO_UNICO_MS.xlsx · maestro_seguros.csv · maestro_cuota_social.csv")
+    generados = "MAESTRO_UNICO_MS.xlsx · maestro_seguros.csv"
+    if cs:
+        generados += " · maestro_cuota_social.csv"
+    print(f"  {generados}")
     print("Las filas con observación quedan en el maestro Excel pero NO pasan "
           "a los CSV de los generadores: corregir en el mantenedor de origen "
           "y volver a ejecutar.")

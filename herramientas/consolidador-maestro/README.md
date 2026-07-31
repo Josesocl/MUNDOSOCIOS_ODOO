@@ -3,13 +3,18 @@
 Consolida los 6 mantenedores reales de `FLUJOS DE PROCESO/RECAUDACIÓN Y COBRANZA/` en el maestro único del proyecto:
 
 - `MANT. PLAN SOCIOS 07-26.xlsx` · `MANT. COMPLEMENTARIO 07-26.xlsx` · `MANT. CATASTRÓFICO 07-26.xlsx` · `MANT. PLAN CARREÑO 07-26.xlsx` (encuentra el del mes por patrón de nombre)
-- `Mantenedor Cuota Social empresa.xlsx` · `Mantenedor Cuota Social persona.xlsx`
+- `Mantenedor Cuota Social empresa.xlsx` · `Mantenedor Cuota Social persona.xlsx` — **solo con `--con-cuota-social`** (decisión 2026-07-31: la cuota social está fuera del ciclo mensual; el flag se usa solo en diciembre-enero para el devengo anual)
 
 ```bash
+# ciclo mensual (solo seguros)
 python3 consolidador_maestro.py --carpeta "…/FLUJOS DE PROCESO/RECAUDACIÓN Y COBRANZA" --salida ./2026-08
+# diciembre-enero (agrega cuota social para el devengo anual)
+python3 consolidador_maestro.py --carpeta "…" --salida ./2026-12 --con-cuota-social
 ```
 
-**Salidas:** `MAESTRO_UNICO_MS.xlsx` (todos los productos por socio + hoja RESUMEN) · `maestro_seguros.csv` (insumo directo de `generador_devengos.py`) · `maestro_cuota_social.csv` (insumo de `generador_cuota_social.py`).
+**Salidas:** `MAESTRO_UNICO_MS.xlsx` (pólizas por socio + hoja RESUMEN) · `maestro_seguros.csv` (insumo directo de `generador_devengos.py`) · `maestro_cuota_social.csv` (solo con el flag; insumo de `generador_cuota_social.py`).
+
+**Qué hojas lee:** solo la hoja principal de cada mantenedor. Las hojas `PAC MM-AA`, `PAT MM-AA` y `ELIMINADOS` se excluyen a propósito: los eliminados no se devengan y las nóminas PAC/PAT son registro de ejecución de cobros (insumo futuro del distribuidor PAC B-03 y rechazos B-04, no del maestro).
 
 ## Qué sabe del layout real (levantado 2026-07-31 contra los archivos de julio)
 
