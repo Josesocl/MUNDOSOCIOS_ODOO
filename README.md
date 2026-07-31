@@ -22,9 +22,10 @@ Los materiales de trabajo del proyecto viven hoy en OneDrive:
 
 - `docs/handoff/` — `00_HANDOFF_Contexto_Proyecto_MundoSocios.md` (con notas de actualización 2026-07-07/08) y `Analisis_Ficha_Requerimientos_Odoo_Mexico_MundoSocios.md`.
 - `docs/entregables-sow/` — los 5 entregables del SOW en `.md` (E1 diagnóstico, E2 quick wins, E3 requerimientos Odoo, E4 gestión del cambio, E5 guía de entrevistas), copia textual de OneDrive; las correcciones conocidas están anotadas en `docs/correcciones/`.
+- `docs/automatizacion-puente/compras/` — proyecto Automatización Puente Compras completo (2026-07-31): diseño, plan y cronograma, `Fase 0/` (vigente) y `Build/` (paquete Zoho CRM, referencia histórica fuera de alcance), más el README del Validador SII.
+- `docs/manuales/` — las 16 transcripciones de manuales de `FLUJOS DE PROCESO/` (ADM y Finanzas, cuota social, experiencias, creación de clientes, resumen de flujos Odoo). Ver advertencia de vigencia en su README.
 
 ## Pendiente de migrar desde OneDrive
 
-- `FLUJOS DE PROCESO/*.md` (manuales transcritos y flujos) y `Automatizacion Puente Compras/` (Fase 0, diseño de referencia y Build) — misma mecánica de copia textual.
 - **Validador SII (código Python)**: el conector de OneDrive no permite leer archivos `.py`; migrarlo desde el Mac (copiar la carpeta al repo y hacer commit).
 - La versión maestra de todo sigue en OneDrive; ante diferencias, manda OneDrive.
