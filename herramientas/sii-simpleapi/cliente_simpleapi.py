@@ -7,7 +7,7 @@ hasta 31-07-2027).
 
 SEGURIDAD: la API key NUNCA va en el código ni en el repositorio.
 Se entrega por variable de entorno:
-    export SIMPLEAPI_API_KEY="....."
+    export SIMPLEAPI_API_KEY="2629-N060-6395-1290-7179"
 
 CUOTA: el plan contratado permite solo 10 consultas RUT al mes (el
 contador se reinicia el día 1). Este cliente protege la cuota:
