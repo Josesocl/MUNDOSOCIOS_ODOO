@@ -62,6 +62,7 @@ MARCAS_FIN_BLOQUE = ("NOMBRE SEGURO", "ESTADO DE CARGO", "CONVENIO",
                      "FECHA DE ELIMINACION", "INCOBRABLE", "MOTIVO")
 
 RUT_RE = re.compile(r"^\d{1,8}-[\dkK]$")
+MEDIOS_CONOCIDOS = {"PAC", "PAT", "DIRECTA", "EMPRESA"}
 
 
 def _norm(texto):
@@ -109,15 +110,20 @@ def _es_fila_marca_fin(valores):
 
 def _buscar_encabezado(ws, requiere):
     """Devuelve (fila, {nombre_norm: col}) del primer encabezado que
-    contenga todos los textos de `requiere`."""
-    for fila in ws.iter_rows(min_row=1, max_row=60):
+    contenga todos los textos de `requiere`.
+
+    Nota: en modo read_only las celdas vacías son EmptyCell sin .row ni
+    .column — el número de fila se lleva por enumerate y la columna por
+    posición, nunca leyendo atributos de la celda."""
+    for num_fila, fila in enumerate(ws.iter_rows(min_row=1, max_row=60),
+                                    start=1):
         nombres = {}
-        for celda in fila:
+        for num_col, celda in enumerate(fila, start=1):
             n = _norm(celda.value)
             if n:
-                nombres.setdefault(n, celda.column)
+                nombres.setdefault(n, num_col)
         if all(any(req in n for n in nombres) for req in requiere):
-            return fila[0].row, nombres
+            return num_fila, nombres
     return None, {}
 
 
@@ -167,6 +173,13 @@ def leer_mantenedor_seguro(ruta, seguro):
             sin_rut_seguidas = 0
             factor = _num(v(c_factor))
             medio = _norm(v(c_medio))
+            if not medio and c_rut and c_rut > 1:
+                # En el Catastrófico la columna del modo de pago no tiene
+                # título: buscarla por contenido a la izquierda del RUT.
+                for celda in valores[:c_rut - 1]:
+                    if _norm(celda) in MEDIOS_CONOCIDOS:
+                        medio = _norm(celda)
+                        break
             obs, nota = [], []
             if not medio:
                 nota.append("sin medio de pago (socio nuevo?)")

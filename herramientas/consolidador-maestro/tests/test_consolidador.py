@@ -61,6 +61,22 @@ def _carreno(ruta):
     wb.save(ruta)
 
 
+def _catastrofico(ruta):
+    # Regresión: el encabezado real del Catastrófico parte con una celda
+    # VACÍA (la columna del modo de pago no tiene título). En read_only
+    # esa celda es EmptyCell sin .row/.column y reventaba el detector.
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["CATASTRÓFICO", None, None, None, "VALOR UF", 40845])
+    ws.append([None, "RUT", "NOMBRE", "VALOR", "VALOR 25-26",
+               "PAC M.S.", "ESTADO PAC", "PAT M.S.", "ESTADO PAT"])
+    ws.append(["PAT", R2, "Ricardo Arcadio Ahumada Riveros", 0.38, 0.42,
+               None, None, 113, "ACTIVO"])
+    ws.append(["DIRECTA", R6, "Andrew John Trench Fontanes", 0.6, 0.67,
+               None, None, None, None])
+    wb.save(ruta)
+
+
 def _cs_empresa(ruta):
     wb = Workbook()
     ws = wb.active
@@ -103,6 +119,7 @@ class TestConsolidador(unittest.TestCase):
         self.carpeta.mkdir()
         _plan_socios(self.carpeta / "MANT. PLAN SOCIOS 07-26.xlsx")
         _carreno(self.carpeta / "MANT. PLAN CARREÑO 07-26.xlsx")
+        _catastrofico(self.carpeta / "MANT. CATASTRÓFICO 07-26.xlsx")
         _cs_empresa(self.carpeta / "Mantenedor Cuota Social empresa.xlsx")
         _cs_persona(self.carpeta / "Mantenedor Cuota Social persona.xlsx")
 
@@ -165,9 +182,19 @@ class TestConsolidador(unittest.TestCase):
         self.assertEqual(resumen["CUOTA SOCIAL EMPRESA"], 3)
 
     def test_avisa_mantenedores_faltantes(self):
-        # sin COMPLEMENTARIO ni CATASTROFICO en la carpeta: corre igual
+        # sin COMPLEMENTARIO en la carpeta: corre igual
         self._correr()
         self.assertTrue((self.salida / "MAESTRO_UNICO_MS.xlsx").exists())
+
+    def test_catastrofico_encabezado_con_primera_celda_vacia(self):
+        self._correr()
+        with open(self.salida / "maestro_seguros.csv", encoding="utf-8-sig") as f:
+            filas = {(r["rut"], r["seguro"]): r
+                     for r in csv.DictReader(f, delimiter=";")}
+        # factor vigente = VALOR 25-26 (columna VALOR más a la derecha)
+        self.assertEqual(filas[(R2, "CATASTROFICO")]["factor_uf"], "0,42")
+        self.assertEqual(filas[(R2, "CATASTROFICO")]["medio_pago"], "PAT")
+        self.assertEqual(filas[(R6, "CATASTROFICO")]["factor_uf"], "0,67")
 
 
 if __name__ == "__main__":
