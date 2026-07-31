@@ -78,10 +78,19 @@ def consultas_del_mes(estado, hoy=None):
 
 
 def _respuesta_mock(rut):
+    # Mismo esquema que la respuesta real (verificado 2026-07-31 con el
+    # RUT de la Corporación).
     return {"rut": rut, "razonSocial": "EMPRESA DE PRUEBA LTDA",
-            "inicioActividades": True, "fechaInicioActividades": "2015-03-01",
-            "actividades": [{"codigo": "620200", "descripcion":
-                             "CONSULTORIA INFORMATICA", "afecta": True}],
+            "actividadesEconomicas": [
+                {"codigo": "620200", "descripcion": "CONSULTORIA INFORMATICA",
+                 "categoria": "Primera", "afectaIVA": True,
+                 "fecha": "01-03-2015"}],
+            "correoIntercambio": "intercambio@prueba.cl",
+            "domicilios": [{"direccion": "CALLE FALSA 123",
+                            "ciudad": "SANTIAGO", "comuna": "SANTIAGO"}],
+            "presentaInicioActividades": True,
+            "fechaInicioActividades": "01-03-2015",
+            "esEmpresaMenorTamano": True, "webFacturacion": None,
             "_mock": True}
 
 

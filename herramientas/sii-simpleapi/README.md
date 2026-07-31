@@ -52,7 +52,28 @@ Hosts de las demás APIs contratadas (para cuando se integren):
 | Folios | `POST https://servicios.simpleapi.cl/api/folios/...` |
 | Mapas | `POST https://servicios.simpleapi.cl/api/mapas/...` |
 
-Primera prueba sugerida: 2 RUTs conocidos (uno vigente y el de la Corporación, 65.091.028-1) comparando contra `zeus.sii.cl` — gasta 2 de las 10 consultas del mes y de paso confirma los nombres de los campos JSON de la respuesta.
+**Verificado en producción (2026-07-31):** primera consulta real con el RUT de la Corporación (65.091.028-1) respondió correcto. Consumo: 1/10 del mes; la respuesta quedó en caché 90 días.
+
+## Respuesta de la API RUT (campos confirmados) — especificación para Zoho
+
+```json
+{
+  "rut": "65091028-1",
+  "razonSocial": "…",
+  "actividadesEconomicas": [
+    {"codigo": "949903", "descripcion": "…", "categoria": "Primera",
+     "afectaIVA": true, "fecha": "03-11-2014"}
+  ],
+  "correoIntercambio": "…",
+  "domicilios": [{"direccion": "…", "ciudad": "…", "comuna": "…"}],
+  "presentaInicioActividades": true,
+  "fechaInicioActividades": "03-11-2014",
+  "esEmpresaMenorTamano": false,
+  "webFacturacion": null
+}
+```
+
+Mapeo sugerido para el alta de proveedores (checklist v2.0 / módulo Zoho): `razonSocial` → razón social · `actividadesEconomicas[0].descripcion` → giro (y `codigo` → código actividad) · `afectaIVA` → afecto IVA (Nacional-factura vs Honorario-boleta) · `presentaInicioActividades` → gate del semáforo APTO (sin inicio de actividades = NO APTO) · `domicilios[0]` → dirección · `correoIntercambio` → correo SII. Fechas en formato `DD-MM-AAAA`.
 
 ## Integraciones que deben apuntar a SimpleAPI (no API Gateway)
 
