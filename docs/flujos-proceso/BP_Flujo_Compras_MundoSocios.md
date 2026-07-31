@@ -58,7 +58,7 @@ Sesión técnica con **Alexander Gutiérrez** (soporte Zoho). El descarte de la 
 - **Sandbox habilitado** con datos de productivo, en espacio aislado; envío de correos deshabilitado por defecto (evita envíos accidentales).
 - **Módulo de Proveedores activado** en Zoho CRM (estaba deshabilitado). Campos clave definidos: RUT, razón social, nombre de fantasía, giro, representante legal, contacto comercial.
 - **Validación del RUT** como regla de validación del módulo, con **función personalizada** (no criterios simples).
-- **Integración SII vía API Gateway** (mismo proveedor ya evaluado en el Validador SII); requiere token y revisión del proxy/alojamiento.
+- **Integración SII** — en la sesión se acordó API Gateway; **actualización 2026-07-31: el proveedor definitivo es SimpleAPI (simpleapi.cl)**, con API key contratada vigente hasta 31-07-2027 (sin proxy ni token adicional). Informar a Alexander para que la función personalizada apunte a SimpleAPI (ver `herramientas/sii-simpleapi/`).
 - Resincronización de correos post-migración Google→Microsoft: Alexander envía el paso a paso.
 
 **Ítems de acción:** Alexander crea el módulo de Proveedores al recibir la planilla de campos · revisa documentación de API Gateway y el proxy · el consultor/Patricio envían la planilla de campos y la documentación de automatizaciones · Patricio gestiona ticket a TI por el error de autorización de Outlook · el consultor envía el **Validador SII** (código) a Alexander como referencia.
@@ -82,7 +82,7 @@ Sesión técnica con **Alexander Gutiérrez** (soporte Zoho). El descarte de la 
 | DP-02 | Solicitudes internas: Compras vs Helpdesk | JR + Partner | Abierta |
 | DP-03 | Formularios: Studio vs desarrollo | Partner | Abierta |
 | DP-04 | Caja chica: dentro o fuera de Odoo | Patricio | Abierta (entrevista B1) |
-| DP-05 | Validación SII | Patricio + Partner | **En curso**: API Gateway vía Zoho (puente); token y proxy por resolver |
+| DP-05 | Validación SII | Patricio + Partner | **Resuelta (2026-07-31)**: proveedor **SimpleAPI**, key contratada hasta 31-07-2027; cuota API RUT 10/mes reservada a altas de proveedores (cliente con caché y control de cuota en `herramientas/sii-simpleapi/`) |
 | DP-06 | Portal del proveedor | Cecilia | Abierta |
 | DP-07 | Catálogo Aramark como productos | Cecilia + Partner | Abierta |
 | DP-08 | Validación del TXT en Odoo antes de cargar al banco | Patricio | Abierta |

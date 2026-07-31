@@ -50,7 +50,7 @@ En sesión técnica con **Alexander Gutiérrez** (soporte Zoho) se acordó que e
 - **Sandbox** habilitado con datos de productivo (aislado; envío de correos deshabilitado por defecto).
 - **Módulo de Proveedores activado** en Zoho CRM. Campos clave definidos: RUT, razón social, nombre de fantasía, giro, representante legal, contacto comercial (alineados con el checklist v2.0; falta enviar la planilla completa de campos).
 - **Validación del RUT** como regla de validación del módulo con **función personalizada** (módulo 11), no criterios simples.
-- **Verificación SII vía API Gateway** (mismo servicio del Validador): pendientes el token y la definición del proxy/alojamiento (el proxy Squid de referencia ya está desplegado en GCP).
+- **Verificación SII**: en la sesión se acordó API Gateway; **actualización 2026-07-31: el proveedor definitivo es SimpleAPI** (key contratada hasta 31-07-2027, API directa sin proxy — la VM Squid de GCP puede apagarse). Cliente con caché y control de cuota (10 consultas RUT/mes) en `herramientas/sii-simpleapi/`.
 - El **Validador SII** (código) se envía a Alexander como referencia de comportamiento.
 
 **Pendientes de esta vía:** ¿proveedores como módulo separado o tipo de cuenta dentro de Socios? · ¿la validación SII corre al crear el registro o como automatización posterior? · habilitación de correos de prueba en Sandbox · token API Gateway (~$10.000 CLP/mes, decisión de Patricio).
@@ -79,7 +79,7 @@ Cuando este módulo entre a productivo, reemplaza la ficha Excel `01_Ficha_Prove
 | # | Decisión | Responsable |
 |---|---|---|
 | DP-P1 | ¿Quién es el dueño formal del alta de proveedores (¿Cecilia?) y quién aprueba (¿Patricio?)? | Patricio |
-| DP-P2 | Contratación API Gateway para verificación SII automática (~$10.000 CLP/mes) | Patricio |
+| DP-P2 | ~~Contratación API Gateway~~ **Resuelta (2026-07-31)**: SimpleAPI contratada (key vigente hasta 31-07-2027) | — |
 | DP-P3 | Criterio de archivo de proveedores históricos incompletos | Patricio |
 
 ---

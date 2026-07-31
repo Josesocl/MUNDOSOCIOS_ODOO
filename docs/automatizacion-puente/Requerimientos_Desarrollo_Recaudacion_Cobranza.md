@@ -46,6 +46,7 @@
 | D-02 | UF de cierre **enero/febrero/marzo**: cuál aplica a qué caso de cuota social | Pendiente |
 | D-03 | **Política de morosidad y pagos parciales**: validar el borrador (`docs/fase-0/`) | Sin política no hay recordatorios automatizables |
 | D-04 | **Control de cumplimiento Addval (48 h)**: registro envío-vs-subida; ¿lo produce el cruzador como subproducto? | Recomendado: sí |
+| D-07 | ~~Servicio SII~~ **Resuelta (2026-07-31)**: **SimpleAPI** contratada (key hasta 31-07-2027). Cliente con caché/cuota en `herramientas/sii-simpleapi/`; confirmar endpoint en primera ejecución real e informar a Alexander (Zoho) | Hecha |
 | D-05 | Cuenta/usuario del equipo MS donde correrán las herramientas (Python en un equipo del área, no del consultor) | Regla del proyecto |
 | D-06 | Acceso a **Zoho Campaigns** y quién dispara las campañas | Para la Ola 2 |
 

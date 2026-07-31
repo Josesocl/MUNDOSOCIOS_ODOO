@@ -14,7 +14,7 @@ Consultoría de JR Jottar (IB Solución) para MundoSocios, programa de la CChC: 
 ## Decisiones vigentes (no re-abrir sin nueva instrucción)
 
 - **2026-07-06: la capa Zoho CRM está FUERA DE ALCANCE** (Build/ y Fases 1-2). Vigente: Fase 0 + 5 herramientas Excel + Validador SII.
-- Integración Manager+ **por archivo, no API**. Validador SII usa **API Gateway** (BaseAPI legado, se discontinúa dic-2026).
+- Integración Manager+ **por archivo, no API**. Verificación SII: **SimpleAPI (simpleapi.cl)** desde 2026-07-31 — key en env `SIMPLEAPI_API_KEY` (NUNCA en código/docs), cuota API RUT 10/mes solo para altas de proveedores, cliente con caché y control de cuota en `herramientas/sii-simpleapi/`. API Gateway y BaseAPI quedan como legado.
 - El dominio `cchc.cl` no es accesible; parametrizar owners, nunca cuentas del consultor.
 
 ## Reglas de negocio fijas (verificadas contra archivos productivos 2026-07-07)
