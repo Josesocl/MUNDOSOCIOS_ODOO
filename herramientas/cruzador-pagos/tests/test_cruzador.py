@@ -205,3 +205,48 @@ class TestCartolaConvertidaExcel(unittest.TestCase):
         # las filas de saldos/preambulo no entran como movimientos
         montos = [m["abono"] for m in movs]
         self.assertNotIn(279322268, montos)
+
+
+class TestResumenTransbankConvertido(unittest.TestCase):
+    """Regresión: Resumen_historico_abonos guardado como .xlsx desde Excel
+    (layout real 2026-08-01): columna A vacía, bloque de totales arriba,
+    encabezado duplicado en las filas 29-30 y montos como texto."""
+
+    def test_lee_resumen_convertido(self):
+        from openpyxl import Workbook
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = Path(tmp) / "Resumen_historico_abonos (06-30).xlsx"
+            wb = Workbook()
+            ws = wb.active
+            filas = [
+                [None, "Reporte:", "Abono acumulado"],
+                [None, "Total ventas (+)", None, "35700751"],
+                [None, "Total abono", None, "34931862"],   # bloque de totales
+                [None, "Fecha de abono", "Total ventas (+)",
+                 "Montos Descontados", None, None, None,
+                 "Devolución comisión po", "Total abono",
+                 "Cuenta de depósito", "N° de ventas"],
+                [None, "Fecha de abono", "Total ventas (+)",
+                 "Comisión Transbank + I", "Ventas Anuladas (-)",
+                 "Cobros por servicio** ", "Total montos descontad",
+                 "Devolución comisión po", "Total abono",
+                 "Cuenta de depósito", "N° de ventas"],
+                [None, "30/06/2026", "1001977", "12264", "0", "0", "12264",
+                 "0", "989713", "BANCO DE CHILE 8001104", "15"],
+                [None, "29/06/2026", "0", "0", "0", "0", "0", "0", "0",
+                 "-", "0"],
+                [None, "25/06/2026", "444067", "4877", "24000", "0", "28877",
+                 "288", "415478", "BANCO DE CHILE 8001104", "7"],
+            ]
+            for f in filas:
+                ws.append(f)
+            wb.save(ruta)
+            abonos = cp.leer_resumen_transbank(ruta)
+
+        self.assertEqual(len(abonos), 2)      # los días en 0 no entran
+        self.assertEqual(abonos[0]["fecha"], date(2026, 6, 30))
+        self.assertEqual(abonos[0]["total"], 989713)
+        self.assertEqual(abonos[0]["n_ventas"], 15)
+        self.assertEqual(abonos[1]["total"], 415478)
+        # el bloque de totales de arriba no debe colarse como un abono
+        self.assertNotIn(34931862, [a["total"] for a in abonos])

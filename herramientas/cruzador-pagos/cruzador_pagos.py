@@ -249,16 +249,47 @@ def leer_cartola(ruta: Path):
     return movimientos
 
 
+def _mapa_columnas_transbank(fila):
+    """Encabezado del 'Resumen histórico de abonos' convertido a .xlsx:
+    'Fecha de abono … Total abono … N° de ventas'. Devuelve índices o None."""
+    normas = [_norm_encabezado(c) for c in fila]
+    mapa = {}
+    for i, n in enumerate(normas):
+        if n.startswith("FECHA DE ABONO"):
+            mapa.setdefault("fecha", i)
+        elif n == "TOTAL ABONO":
+            mapa.setdefault("total", i)
+        elif "VENTAS" in n and ("N°" in n or "NRO" in n or "NUM" in n):
+            mapa.setdefault("n_ventas", i)
+    if {"fecha", "total"} <= set(mapa):
+        return mapa
+    return None
+
+
 def leer_resumen_transbank(ruta: Path):
-    """Filas del 'Resumen histórico de abonos': fecha, total abono, nº ventas."""
-    abonos = []
+    """Filas del 'Resumen histórico de abonos': fecha, total abono, nº ventas.
+
+    Soporta el layout original (posiciones fijas 0/7/9) y el archivo
+    guardado como .xlsx desde Excel (columnas corridas, ubicadas por el
+    encabezado 'Fecha de abono / Total abono / N° de ventas')."""
+    abonos, mapa = [], None
     for fila in leer_tabla(ruta):
-        celdas = list(fila) + [""] * 10
-        fecha = parse_fecha(celdas[0])
+        celdas = list(fila) + [""] * 12
+        nuevo_mapa = _mapa_columnas_transbank(celdas)
+        if nuevo_mapa:
+            mapa = nuevo_mapa
+            continue
+        if mapa:
+            fecha = parse_fecha(celdas[mapa["fecha"]])
+            total = parse_monto(celdas[mapa["total"]])
+            n_ventas = parse_monto(celdas[mapa["n_ventas"]]) \
+                if "n_ventas" in mapa else 0
+        else:
+            fecha = parse_fecha(celdas[0])
+            total = parse_monto(celdas[7])
+            n_ventas = parse_monto(celdas[9])
         if fecha is None:
             continue
-        total = parse_monto(celdas[7])
-        n_ventas = parse_monto(celdas[9])
         if total > 0:
             abonos.append({"fecha": fecha, "total": total, "n_ventas": n_ventas})
     return abonos
