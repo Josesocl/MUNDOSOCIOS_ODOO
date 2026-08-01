@@ -94,18 +94,24 @@
 | `maestro_seguros.csv` | Generado en el Paso 1 |
 
 1. Copiar los 3 archivos a la carpeta del mes.
-2. Ejecutar:
+2. Ejecutar (el `--diccionario` es el archivo aprendido del mes anterior — ver punto 6):
    ```bash
    cd "Documentos/AutomatizacionMS/herramientas/cruzador-pagos"
    python3 cruzador_pagos.py \
      --cartola "../../2026-08/CARTOLA BANCO CHILE JULIO 26.xls" \
      --transbank-resumen "../../2026-08/INFORME TRANSBANK Resumen_historico_abonos (07-31).xls" \
      --maestro "../../2026-08/maestro_seguros.csv" \
+     --diccionario diccionario_nombre_rut.csv \
      --salida "../../2026-08"
    ```
 3. **Qué debe ver:** `PRECONCILIACION_BORRADOR.xlsx` en la carpeta del mes, con el mismo formato de `06 PRECONCILIACIÓN JUNIO 26.xlsx` más 3 columnas de apoyo: **CLASIFICACION** (Transbank/PAC/transferencia/cargo), **CONFIANZA** (alta/media/baja) y **NOTA**.
 4. **Trabajo humano que queda:** revisar solo las filas con CONFIANZA media/baja; identificar las transferencias sin RUT; distribuir los abonos "Pac Multibanco" por socio (el banco los entrega agregados — límite del banco, se resuelve cuando llegue la rendición por convenio, insumo I-01). Al terminar, guardar como `08 PRECONCILIACIÓN AGOSTO 26.xlsx` en OneDrive, como siempre.
-5. **Nota técnica:** los `.xls` del banco y de Transbank son en realidad páginas web disfrazadas — la herramienta los lee igual. Si alguna vez uno no se deja leer, abrirlo en Excel, **Guardar como → .xlsx**, y reintentar con ese.
+5. **Nota técnica:** los `.xls` del banco y de Transbank son en realidad páginas web disfrazadas — la herramienta los lee igual. Si alguna vez uno no se deja leer, abrirlo en Excel, **Guardar como → .xlsx**, y reintentar con ese (el cruzador también lee esos convertidos).
+6. **El cruzador aprende mes a mes:** al terminar de conciliar el mes, correr
+   ```bash
+   python3 calibrar_preconciliacion.py --real "NN PRECONCILIACIÓN MES 26.xlsx" --borrador PRECONCILIACION_BORRADOR.xlsx --salida .
+   ```
+   Eso mide cuánto acertó el borrador y **actualiza `diccionario_nombre_rut.csv`** (los pares pagador→socio que el equipo resolvió a mano). Ese archivo se pasa con `--diccionario` al mes siguiente: es lo único que identifica los pagos hechos por terceros (una persona que paga la cuota de su empresa). Confianza **alta** = identificado por histórico; **media** = parecido de nombre, siempre confirmar contra la deuda.
 
 ### Paso 4 (por evento): alta o modificación de proveedor
 

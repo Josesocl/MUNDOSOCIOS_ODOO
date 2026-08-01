@@ -350,8 +350,22 @@ def match_socio(nombre_pagador: str, socios):
     return mejor, mejor_score
 
 
-def clasificar(mov, resumen_transbank, socios):
+def leer_diccionario(ruta: Path):
+    """CSV nombre_cartola;rut (lo genera calibrar_preconciliacion.py).
+    Clave: tokens del nombre ordenados — insensible a orden y tildes."""
+    dic = {}
+    with open(ruta, newline="", encoding="utf-8-sig") as f:
+        for fila in csv.DictReader(f, delimiter=";"):
+            nombre = (fila.get("nombre_cartola") or "").strip()
+            rut = (fila.get("rut") or "").strip().upper()
+            if nombre and rut:
+                dic[" ".join(sorted(tokens_nombre(nombre)))] = rut
+    return dic
+
+
+def clasificar(mov, resumen_transbank, socios, diccionario=None):
     """→ (clasificacion, rut, concepto, estado, confianza, nota)."""
+    diccionario = diccionario or {}
     d = mov["descripcion"]
     if mov["abono"] > 0:
         if GLOSA_TRANSBANK.match(d):
@@ -368,15 +382,24 @@ def clasificar(mov, resumen_transbank, socios):
                     "P", "alta", "distribuir con la rendición PAC del banco")
         m = GLOSA_TRASPASO.match(d)
         if m:
-            socio, score = match_socio(m.group(1), socios)
-            if socio and score >= 0.75:
+            pagador = m.group(1)
+            # 1º el diccionario histórico (pares pagador→RUT que el equipo ya
+            # resolvió en preconciliaciones anteriores). Es la única fuente
+            # que acierta cuando paga un tercero (persona por una empresa).
+            rut_hist = diccionario.get(" ".join(sorted(tokens_nombre(pagador))))
+            if rut_hist:
+                return ("TRANSFERENCIA", rut_hist, "HISTORICO: mismo pagador",
+                        "P", "alta", "identificado por preconciliaciones anteriores")
+            # 2º match difuso contra el maestro — SOLO como pista conservadora:
+            # calibración junio-26: proponer con umbral bajo produjo 26
+            # propuestas erróneas (pagos de terceros). Nunca 'alta'.
+            socio, score = match_socio(pagador, socios)
+            if socio and score >= 0.75 and \
+                    len(tokens_nombre(pagador) & socio["tokens"]) >= 3:
                 return ("TRANSFERENCIA", socio["rut"], "PROPUESTA: " + socio["nombre"],
-                        "P", "alta", f"match nombre {score:.0%} — confirmar contra deuda")
-            if socio and score >= 0.5:
-                return ("TRANSFERENCIA", socio["rut"], "PROPUESTA: " + socio["nombre"],
-                        "P", "media", f"match nombre {score:.0%} — revisar")
+                        "P", "media", f"match nombre {score:.0%} — confirmar contra deuda")
             return ("TRANSFERENCIA", "", "DEPOSITO POR IDENTIFICAR",
-                    "P", "", f"pagador: {m.group(1)}")
+                    "P", "", f"pagador: {pagador}")
         if GLOSA_SPAV_ABONO.match(d):
             return ("TRANSFERENCIA SPAV", "", "ABONO POR IDENTIFICAR", "P", "", "")
         if GLOSA_DEPOSITO.match(d):
@@ -425,6 +448,9 @@ def main(argv=None):
                     help="Informe Transbank 'Resumen histórico de abonos'")
     ap.add_argument("--maestro", type=Path, default=None,
                     help="CSV rut,nombre para identificar transferencias")
+    ap.add_argument("--diccionario", type=Path, default=None,
+                    help="CSV nombre_cartola;rut aprendido de preconciliaciones "
+                         "anteriores (lo genera calibrar_preconciliacion.py)")
     ap.add_argument("--salida", type=Path, default=Path("."))
     args = ap.parse_args(argv)
 
@@ -434,11 +460,15 @@ def main(argv=None):
         return 1
     resumen = leer_resumen_transbank(args.transbank_resumen) if args.transbank_resumen else []
     socios = leer_maestro(args.maestro) if args.maestro else []
+    diccionario = leer_diccionario(args.diccionario) if args.diccionario else {}
+    if diccionario:
+        print(f"Diccionario histórico: {len(diccionario)} pagadores conocidos")
 
     contadores = {}
     for mov in movimientos:
         (mov["clasificacion"], mov["rut"], mov["concepto"], mov["estado"],
-         mov["confianza"], mov["nota"]) = clasificar(mov, resumen, socios)
+         mov["confianza"], mov["nota"]) = clasificar(mov, resumen, socios,
+                                                     diccionario)
         contadores[mov["clasificacion"]] = contadores.get(mov["clasificacion"], 0) + 1
 
     args.salida.mkdir(parents=True, exist_ok=True)

@@ -117,7 +117,9 @@ class TestClasificacion(unittest.TestCase):
         self.assertEqual(transbank[14], "listo")          # ESTADO
         traspaso = por_desc[(30, "Traspaso De: Enrique Gonzalo Rodriguez Lagos")]
         self.assertEqual(traspaso[7], "5031324-7")        # RUT propuesto
-        self.assertEqual(traspaso[16], "alta")            # CONFIANZA
+        # calibración junio-26: el match por nombre nunca es 'alta' —
+        # 'alta' queda reservada al diccionario histórico
+        self.assertEqual(traspaso[16], "media")           # CONFIANZA
         pac = por_desc[(17, "Pac Multibanco Banco Santander")]
         self.assertIn("POR DISTRIBUIR", pac[8])
         cheque = por_desc[(26, "Dep.cheq.otros Bancos")]
@@ -250,3 +252,45 @@ class TestResumenTransbankConvertido(unittest.TestCase):
         self.assertEqual(abonos[1]["total"], 415478)
         # el bloque de totales de arriba no debe colarse como un abono
         self.assertNotIn(34931862, [a["total"] for a in abonos])
+
+
+class TestDiccionarioHistorico(unittest.TestCase):
+    """El diccionario nombre→RUT aprendido de preconciliaciones anteriores
+    manda sobre el match difuso (calibración junio-26: es la única fuente
+    correcta cuando un tercero paga por el socio)."""
+
+    def _mov(self, desc):
+        return {"fecha": date(2026, 7, 30), "descripcion": desc, "canal": "",
+                "docto": "", "cargo": 0, "abono": 122306, "saldo": 0}
+
+    def test_diccionario_manda_sobre_match(self):
+        socios = [{"rut": "5031324-7", "nombre": "JULIO ANDRES TOLEDO ORTEGA",
+                   "tokens": cp.tokens_nombre("JULIO ANDRES TOLEDO ORTEGA")}]
+        dic = {" ".join(sorted(cp.tokens_nombre("Julio Andres Toledo Ortega"))):
+               "96511460-2"}   # el equipo lo asignó a la EMPRESA socia
+        clas, rut, concepto, estado, conf, nota = cp.clasificar(
+            self._mov("Traspaso De: Julio Andres Toledo Ortega"),
+            [], socios, dic)
+        self.assertEqual(rut, "96511460-2")
+        self.assertEqual(conf, "alta")
+        self.assertIn("HISTORICO", concepto)
+
+    def test_sin_diccionario_match_debil_no_propone(self):
+        # 2 tokens comunes no bastan (política conservadora)
+        socios = [{"rut": "1-9", "nombre": "PEDRO PABLO ROJAS SOTO",
+                   "tokens": cp.tokens_nombre("PEDRO PABLO ROJAS SOTO")}]
+        clas, rut, concepto, estado, conf, nota = cp.clasificar(
+            self._mov("Traspaso De: Pedro Rojas"), [], socios, {})
+        self.assertEqual(rut, "")
+        self.assertIn("POR IDENTIFICAR", concepto)
+
+    def test_leer_diccionario_normaliza(self):
+        with tempfile.TemporaryDirectory() as d:
+            ruta = Path(d) / "dic.csv"
+            ruta.write_text("nombre_cartola;rut\n"
+                            "ENRIQUE GONZALO RODRIGUEZ LAGOS;15009275-2\n",
+                            encoding="utf-8-sig")
+            dic = cp.leer_diccionario(ruta)
+        clave = " ".join(sorted(cp.tokens_nombre(
+            "Rodriguez Lagos Enrique Gonzalo")))   # otro orden, da lo mismo
+        self.assertEqual(dic[clave], "15009275-2")
