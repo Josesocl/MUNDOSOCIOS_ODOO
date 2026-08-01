@@ -54,7 +54,7 @@
 
 | # | Entrega | Depende de | Esfuerzo |
 |---|---|---|---|
-| B-01 | **Calibración del cruzador** contra junio real (umbral de confianza, diccionario nombre→RUT desde la preconciliación histórica) | I-09 | 0,5 día |
+| B-01 | ~~Calibración del cruzador~~ **RESUELTA (2026-08-01)** con junio real: 197/198 filas emparejadas, Transbank y PAC cuadrados al peso; match por nombre recalibrado (los 26 errores eran terceros pagando por el socio → el diccionario histórico `diccionario_nombre_rut.csv` pasa a ser fuente primaria y el match difuso es conservador). Junio con diccionario: 79% clasificado (vs 51%). Prueba real: julio con el diccionario de junio | — | Hecha |
 | B-02 | **Cruzador v2**: detalle Transbank por código de comercio + estado de deuda por socio + aging de morosidad + CSV de estados para Zoho + paquete Addval + control 48 h | I-03, I-04, D-04 | 2 días |
 | B-03 | **Distribuidor PAC**: parser de la rendición por convenio → rebaja propuesta por socio | I-01 | 1 día |
 | B-04 | **Rechazos semi-automáticos**: parser de rechazos → lista para campaña + marca de reintento | I-02 | 0,5 día |
