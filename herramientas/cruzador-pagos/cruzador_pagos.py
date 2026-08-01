@@ -38,7 +38,7 @@ import io
 import re
 import sys
 import unicodedata
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -135,6 +135,8 @@ def parse_monto(celda):
 
 
 def parse_fecha(celda):
+    if isinstance(celda, datetime):
+        return celda.date()       # normalizar: date y datetime deben comparar igual
     if isinstance(celda, date):
         return celda
     s = str(celda or "").strip()
