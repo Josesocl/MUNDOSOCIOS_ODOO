@@ -149,3 +149,59 @@ class TestClasificacion(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCartolaConvertidaExcel(unittest.TestCase):
+    """Regresión: cartola guardada como .xlsx desde Excel (layout real de
+    CARTOLA BANCO CHILE JUNIO 26.xlsx, 2026-08-01): columna A vacía,
+    preámbulo del banco, encabezado con huecos por celdas combinadas y
+    montos como texto."""
+
+    def test_lee_cartola_convertida(self):
+        from openpyxl import Workbook
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = Path(tmp) / "CARTOLA BANCO CHILE JUNIO 26.xlsx"
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Hoja1"
+            filas = [
+                [None, "Sr(a).: ", None, "Oriana Camila Romero Guerra"],
+                [None, "Cuenta N°:", None, "00-800-11043-09"],
+                [None, "Total Cargos", None, None, "Total Abonos", None,
+                 None, "Línea de Sobregiro Pactado", "Línea de Crédito"],
+                [None, "309288233", None, None, "279322268", None, None,
+                 "0", "0"],
+                [None, "Movimientos", None, "al 07/07/2026"],
+                [None, "Fecha", None, "Descripción", None,
+                 "Canal o Sucursal", "Nro. Docto.", "Cargos (CLP)",
+                 "Abonos (CLP)", "Saldo (CLP)"],
+                [None, "30/06/2026", None, "Traspaso De: Enrique Gonza",
+                 None, "Internet", None, None, "40820", "147675986"],
+                [None, "30/06/2026", None, "Pago: Abonos Debito Y Cred",
+                 None, "Oficina Central", None, None, "989713", "147113606"],
+                [None, "26/06/2026", None, "Dep.cheq.otros Bancos", None,
+                 "Apoquindo", "8783081", None, "700155", "145234184"],
+                # encabezado repetido de la página siguiente + fila legal
+                [None, "Fecha", None, "Descripción", None,
+                 "Canal o Sucursal", "Nro. Docto.", "Cargos (CLP)",
+                 "Abonos (CLP)", "Saldo (CLP)"],
+                [None, "25/06/2026", None, "Pac Falabella", None,
+                 "Oficina Central", None, "1234", None, "145000000"],
+                [None, "Información legal del banco…"],
+            ]
+            for f in filas:
+                ws.append(f)
+            wb.save(ruta)
+
+            movs = cp.leer_cartola(ruta)
+        self.assertEqual(len(movs), 4)
+        self.assertEqual(movs[0]["fecha"], date(2026, 6, 30))
+        self.assertEqual(movs[0]["abono"], 40820)
+        self.assertEqual(movs[0]["descripcion"], "Traspaso De: Enrique Gonza")
+        self.assertEqual(movs[2]["docto"], "8783081")
+        self.assertEqual(movs[2]["canal"], "Apoquindo")
+        # fila de la página 2, con cargo en vez de abono
+        self.assertEqual(movs[3]["cargo"], 1234)
+        # las filas de saldos/preambulo no entran como movimientos
+        montos = [m["abono"] for m in movs]
+        self.assertNotIn(279322268, montos)

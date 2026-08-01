@@ -138,6 +138,12 @@ def parse_fecha(celda):
     if isinstance(celda, date):
         return celda
     s = str(celda or "").strip()
+    iso = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T].*)?$", s)
+    if iso:                       # celda de fecha real re-convertida a texto
+        try:
+            return date(int(iso.group(1)), int(iso.group(2)), int(iso.group(3)))
+        except ValueError:
+            return None
     m = re.match(r"^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$", s)
     if not m:
         return None
@@ -154,12 +160,78 @@ def parse_fecha(celda):
         return None
 
 
+def _norm_encabezado(celda):
+    import unicodedata
+    t = unicodedata.normalize("NFD", str(celda or ""))
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    return t.strip().upper()
+
+
+def _mapa_columnas_cartola(fila):
+    """Si la fila es el encabezado de movimientos ('Fecha … Descripción …
+    Cargos …'), devuelve el índice de cada campo; si no, None.
+
+    Necesario porque al guardar la cartola HTML como .xlsx desde Excel las
+    columnas quedan corridas (columna A vacía) y con huecos por celdas
+    combinadas — las posiciones fijas 0..6 dejan de valer."""
+    normas = [_norm_encabezado(c) for c in fila]
+    if "FECHA" not in normas:
+        return None
+    mapa = {}
+    for i, n in enumerate(normas):
+        if n == "FECHA":
+            mapa.setdefault("fecha", i)
+        elif n.startswith("DESCRIPCION") or n.startswith("DETALLE"):
+            mapa.setdefault("descripcion", i)
+        elif "CANAL" in n or "SUCURSAL" in n:
+            mapa.setdefault("canal", i)
+        elif "DOCTO" in n or "DOCUMENTO" in n:
+            mapa.setdefault("docto", i)
+        elif n.startswith("CARGO"):
+            mapa.setdefault("cargo", i)
+        elif n.startswith("ABONO"):
+            mapa.setdefault("abono", i)
+        elif n.startswith("SALDO"):
+            mapa.setdefault("saldo", i)
+    if {"fecha", "descripcion", "cargo", "abono"} <= set(mapa):
+        return mapa
+    return None
+
+
 def leer_cartola(ruta: Path):
-    """Extrae los movimientos de la cartola (todas sus 'páginas')."""
-    movimientos = []
+    """Extrae los movimientos de la cartola (todas sus 'páginas').
+
+    Soporta el .xls original del banco (HTML, columnas 0..6 contiguas) y
+    el mismo archivo guardado como .xlsx desde Excel (columnas corridas:
+    se ubican por la fila de encabezado 'Fecha/Descripción/…')."""
+    movimientos, mapa = [], None
     for fila in leer_tabla(ruta):
-        celdas = [str(c).strip() if not isinstance(c, (int, float)) else c
+        celdas = [str(c).strip() if not isinstance(c, (int, float, date)) else c
                   for c in fila]
+        nuevo_mapa = _mapa_columnas_cartola(celdas)
+        if nuevo_mapa:
+            mapa = nuevo_mapa            # se repite en cada 'página'
+            continue
+
+        if mapa:
+            def v(campo):
+                i = mapa.get(campo)
+                return celdas[i] if i is not None and i < len(celdas) else ""
+            fecha = parse_fecha(v("fecha"))
+            if fecha is None:
+                continue
+            movimientos.append({
+                "fecha": fecha,
+                "descripcion": str(v("descripcion")).strip(),
+                "canal": str(v("canal")).strip(),
+                "docto": str(v("docto")).strip(),
+                "cargo": parse_monto(v("cargo")),
+                "abono": parse_monto(v("abono")),
+                "saldo": parse_monto(v("saldo")),
+            })
+            continue
+
+        # formato original (sin encabezado detectado): posiciones fijas
         if len(celdas) < 7:
             continue
         fecha = parse_fecha(celdas[0])
