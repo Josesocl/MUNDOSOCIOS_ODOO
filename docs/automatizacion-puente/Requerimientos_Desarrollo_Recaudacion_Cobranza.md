@@ -21,8 +21,8 @@
 ### Del banco / Transbank (gestiona Marcos o Patricio)
 | # | Insumo | Para qué | Bloquea |
 |---|---|---|---|
-| I-01 | **Rendición PAC por convenio (16 y 41)**: archivo del banco con el detalle por socio de cada abono "Pac Multibanco" | Distribuir la recaudación PAC por socio (hoy llega como monto agregado por banco) | Distribución PAC automática |
-| I-02 | **Archivo/reporte de rechazos PAC y PAT** (layout) | Lista automática de rechazados para el correo de cobro y el reintento | Rechazos semi-automáticos |
+| I-01 | **Rendición PAC por convenio (16 y 41)**: archivo del banco con el detalle por socio de cada abono "Pac Multibanco" | Distribuir la recaudación PAC por socio (hoy llega como monto agregado por banco) | **Degradada a verificación (2026-08-01):** en `RECAUDACIÓN Y COBRANZA/Archivos carga pac-pat/` existe la **NÓMINA PAC mensual por socio** (RUT, banco, convenio 16/41, seguro, monto — la que MS envía a cobrar, generada por los `.xlsm` "Cargo PAC" → TXT ancho fijo Banco de Chile) y la PAT equivalente (`monto;RUT` por seguro). Con eso + los estados de cargo de las hojas PAC de los mantenedores, el distribuidor B-03 se construye **sin esperar al banco** |
+| I-02 | **Archivo/reporte de rechazos PAC y PAT** (layout) | Lista automática de rechazados para el correo de cobro y el reintento | Acotada (2026-08-01): preguntar a Marcos/Oriana **de dónde sale el "Estado de Cargo"** que anotan en las hojas PAC de los mantenedores (¿archivo de respuesta del banco?, ¿portal?) — ese es el insumo que falta, no el detalle del cargo |
 | I-03 | Acceso/rutina de descarga del reporte Transbank **"Abonos por día"** (detalle de ventas) | Segmentar cada abono por canal (PAT 32606164 / Webpay Plus 51709929 / Webpay.cl 35997075 / QR / POS) en el cruzador v2 | Cruzador v2 |
 
 ### De Manager+ (gestiona Oriana o Marcos)
