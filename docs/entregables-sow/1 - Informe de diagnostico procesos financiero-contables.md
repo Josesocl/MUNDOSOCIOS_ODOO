@@ -89,7 +89,7 @@ Sala, servicio de alimentación (Aramark), pasajes (Travel Security / Chicureo T
 ## 5. Conclusiones para la migración
 El área es viable de migrar a Odoo, pero la calidad del resultado depende de: (a) **limpiar maestros** (proveedores, plan de cuentas, centros de costo) antes de migrar; (b) **sistematizar reglas hoy implícitas** (matriz de aprobaciones, campos críticos, separación de fondos); y (c) **resolver las integraciones** que hoy son manuales (Acepta, Banco de Chile, Webpay, SII). Los quick wins propuestos (Entregable 2) atacan los dolores 1, 5, 6 y 9 de inmediato y dejan activos reutilizables.
 
-## 6. Cobertura documental y pendientes a confirmar en entrevistas
+## 6. Cobertura documental 
 **Procesos ya documentados** (manuales revisados): compras/cotizaciones, creación de proveedores, creación de clientes/socios, ingreso de facturas (con/sin OC, vía Acepta), boletas de honorarios, nóminas de pago (proveedores y personal), rendiciones del equipo, conciliación bancaria, cobranza de cuota social, devengo de cuota social y carga de devengos de seguros.
 
 **Pendientes a confirmar en entrevistas:**
