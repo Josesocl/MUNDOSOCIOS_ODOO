@@ -15,7 +15,7 @@
 | Patricio Fernández | Adm. y Finanzas (owner) | Todos; especialmente B4-B10 y C |
 | Cecilia Ramírez | Compras / OC / caja chica | B1, B2, B5, B6 |
 | Oriana Romero | Recaudación / cobranza | B3, B10 |
-| Carla Carvajal / Javiera Valdovinos | Incorporación de socios | B3 |
+| Carla Carvajal | Incorporación de socios | B3 |
 | Encargado de conciliación | Tesorería | B2, B8, B10 |
 
 > **Actualización 2026-07-07:** Javiera Valdovinos ya no está en MundoSocios; considerar en su lugar a **Marcos Ibarra** (Adm. y Control de Gestión, apoyo a recaudación y enlace con Addval).
@@ -46,7 +46,7 @@
 - ¿Cuáles son los 3 procesos que más tiempo consumen?
 - ¿Dónde se acumulan los atrasos?
 
-### B5. Equipo y responsabilidades (RACI)
+### B5. Equipo y responsabilidades
 - ¿Quién hace, quién aprueba, quién es informado en cada proceso?
 - ¿Qué pasa cuando la persona clave está ausente (subrogancia real)?
 - ¿Qué tareas dependen de una sola persona?
@@ -68,7 +68,7 @@
 - ¿Se puede exportar el estado de OC/facturas para reflejarlo en Zoho?
 
 ### B9. Validación tributaria (SII)
-- ¿Estarían dispuestos a contratar una API de terceros para validar situación tributaria por RUT? (BaseAPI / API Gateway)
+- ¿Estarían dispuestos a contratar una API de terceros para validar situación tributaria por RUT? (SimpleAPI)
 - ¿Quién decide el gasto y bajo qué presupuesto?
 - Mientras tanto, ¿quién hace la validación manual y con qué frecuencia?
 
