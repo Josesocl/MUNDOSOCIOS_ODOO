@@ -193,9 +193,11 @@ def _mapa_columnas_cartola(fila):
             mapa.setdefault("canal", i)
         elif "DOCTO" in n or "DOCUMENTO" in n:
             mapa.setdefault("docto", i)
-        elif n.startswith("CARGO"):
+        elif "CARGO" in n and "ABONO" not in n:
+            # 'Cargos (CLP)' (cartola web) y 'Cheque o Cargo' (Cartola Emitida)
             mapa.setdefault("cargo", i)
-        elif n.startswith("ABONO"):
+        elif "ABONO" in n:
+            # 'Abonos (CLP)' y 'Deposito o Abono'
             mapa.setdefault("abono", i)
         elif n.startswith("SALDO"):
             mapa.setdefault("saldo", i)

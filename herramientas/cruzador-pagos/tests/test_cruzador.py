@@ -330,3 +330,42 @@ class TestTransbankMultiHoja(unittest.TestCase):
         self.assertEqual(len(abonos), 1)
         self.assertEqual(abonos[0]["total"], 133083)
         self.assertEqual(abonos[0]["n_ventas"], 4)
+
+
+class TestCartolaEmitida(unittest.TestCase):
+    """Regresión: formato 'Cartola Emitida' del Banco de Chile (julio-26),
+    CSV ';' abierto en Excel y guardado como .xlsx. Columnas:
+    Fecha | Detalle Movimiento | Cheque o Cargo | Deposito o Abono |
+    Saldo | Docto. Nro. | Trn | Caja | Sucursal.
+    El Saldo NUNCA debe leerse como cargo/abono."""
+
+    def test_lee_cartola_emitida(self):
+        from openpyxl import Workbook
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = Path(tmp) / "CartolaEmitida..xlsx"
+            wb = Workbook()
+            ws = wb.active
+            ws.append(["Fecha", "Detalle Movimiento", "Cheque o Cargo",
+                       "Deposito o Abono", "Saldo", "Docto. Nro.", "Trn",
+                       "Caja", "Sucursal"])
+            ws.append(["31/07/2026", "Traspaso De: Enrique Gonzalo Rodriguez",
+                       None, "40820", "147675986", None, "123", "1",
+                       "Internet"])
+            ws.append(["31/07/2026", "Pago: Abonos Debito Y Credito Transbank",
+                       None, "546556", "147635166", None, "124", "1",
+                       "Oficina Central"])
+            ws.append(["30/07/2026", "Provision: Proveedores 00120",
+                       "1500000", None, "147088610", None, "125", "1",
+                       "Oficina Central"])
+            wb.save(ruta)
+            movs = cp.leer_cartola(ruta)
+
+        self.assertEqual(len(movs), 3)
+        self.assertEqual(movs[0]["abono"], 40820)
+        self.assertEqual(movs[0]["cargo"], 0)
+        self.assertEqual(movs[0]["saldo"], 147675986)
+        self.assertEqual(movs[2]["cargo"], 1500000)
+        self.assertEqual(movs[2]["abono"], 0)
+        # el saldo jamás se cuela como cargo (bug del 2026-08-01: sumaba
+        # $11 mil millones de "cargos")
+        self.assertNotIn(147675986, [m["cargo"] for m in movs])
