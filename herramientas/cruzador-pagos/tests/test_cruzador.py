@@ -417,3 +417,34 @@ class TestCartolaEmitidaGlosasRecortadas(unittest.TestCase):
                "abono": 10598, "saldo": 1}
         clas, rut, concepto, estado, conf, nota = cp.clasificar(mov, [], [], dic)
         self.assertEqual(rut, "")   # menos de 10 letras: demasiado ambiguo
+
+
+class TestFronteraEntreHojas(unittest.TestCase):
+    """El mapeo de encabezado no debe sobrevivir de una hoja a otra: en
+    '07 TRANSBANK JULIO 26.xlsx' después del 'Informe' viene la hoja de
+    DETALLE de ventas (fechas y montos que no son abonos del resumen)."""
+
+    def test_detalle_posterior_no_se_cuela_como_abono(self):
+        from openpyxl import Workbook
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = Path(tmp) / "07 TRANSBANK JULIO 26.xlsx"
+            wb = Workbook()
+            informe = wb.active
+            informe.title = "Informe"
+            informe.append([None, "Fecha de abono", "Total ventas (+)",
+                            "Comisión", "Anuladas", "Cobros", "Descontados",
+                            "Devolución", "Total abono", "Cuenta de depósito",
+                            "N° de ventas"])
+            informe.append([None, "01/07/2026", "134700", "1617", "0", "0",
+                            "1617", "0", "133083", "BANCO DE CHILE", "4"])
+            detalle = wb.create_sheet("Detalle")
+            # fila del detalle con una fecha y un monto en las MISMAS
+            # posiciones que usaba el mapa del Informe
+            detalle.append([None, "01-07-26", "133.083", "COMISIÓN",
+                            "$1.919", "", "", "", "999999", "x", "5"])
+            wb.save(ruta)
+            abonos = cp.leer_resumen_transbank(ruta)
+
+        self.assertEqual(len(abonos), 1)
+        self.assertEqual(abonos[0]["total"], 133083)
+        self.assertNotIn(999999, [a["total"] for a in abonos])

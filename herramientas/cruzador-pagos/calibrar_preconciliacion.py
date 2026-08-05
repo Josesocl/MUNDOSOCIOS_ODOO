@@ -28,8 +28,8 @@ import sys
 from pathlib import Path
 
 from cruzador_pagos import (GLOSA_PAC, GLOSA_TRANSBANK, GLOSA_TRASPASO,
-                            _norm_encabezado, leer_tabla, parse_fecha,
-                            parse_monto)
+                            MARCA_HOJA, _norm_encabezado, leer_tabla,
+                            parse_fecha, parse_monto)
 
 RUT_EN_TEXTO = re.compile(r"\b(\d{1,2}\.?\d{3}\.?\d{3}-[\dkK])\b|\b(\d{6,8}-[\dkK])\b")
 
@@ -54,6 +54,9 @@ def leer_preconciliacion(ruta):
     columnas por encabezado (tolera columnas corridas y celdas combinadas)."""
     mapa, filas = None, []
     for fila in leer_tabla(ruta):
+        if fila and fila[0] == MARCA_HOJA:
+            mapa = None
+            continue
         celdas = list(fila) + [""] * 20
         normas = [_norm_encabezado(c) for c in celdas]
         if "FECHA" in normas and any(n.startswith("DESCRIPCION") for n in normas):

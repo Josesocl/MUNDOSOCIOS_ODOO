@@ -74,6 +74,11 @@ CARGOS = [
 
 # ---------------------------------------------------------------- lectura
 
+# Fila-frontera que leer_tabla inserta entre hojas de un xlsx: los mapeos
+# de encabezado NO deben sobrevivir de una hoja a la siguiente.
+MARCA_HOJA = "\x00NUEVA_HOJA\x00"
+
+
 class _TablasHTML(HTMLParser):
     """Extrae todas las filas de todas las tablas de un HTML plano."""
 
@@ -107,8 +112,10 @@ def leer_tabla(ruta: Path):
         from openpyxl import load_workbook
         wb = load_workbook(io.BytesIO(datos), read_only=True, data_only=True)
         filas = []
-        for ws in wb.worksheets:                       # TODAS las hojas: los
-            for fila in ws.iter_rows(values_only=True):  # archivos del equipo
+        for i, ws in enumerate(wb.worksheets):         # TODAS las hojas: los
+            if i:                                      # archivos del equipo
+                filas.append([MARCA_HOJA])             # frontera entre hojas
+            for fila in ws.iter_rows(values_only=True):
                 filas.append(["" if c is None else c for c in fila])
         return filas
     if datos[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":  # OLE: xls binario real
@@ -216,6 +223,9 @@ def leer_cartola(ruta: Path):
     se ubican por la fila de encabezado 'Fecha/Descripción/…')."""
     movimientos, mapa = [], None
     for fila in leer_tabla(ruta):
+        if fila and fila[0] == MARCA_HOJA:
+            mapa = None
+            continue
         celdas = [str(c).strip() if not isinstance(c, (int, float, date)) else c
                   for c in fila]
         nuevo_mapa = _mapa_columnas_cartola(celdas)
@@ -290,6 +300,9 @@ def leer_resumen_transbank(ruta: Path):
     con_encabezado = any(_mapa_columnas_transbank(f) for f in filas)
     abonos, mapa = [], None
     for celdas in filas:
+        if celdas and celdas[0] == MARCA_HOJA:
+            mapa = None                    # el mapeo no cruza de hoja
+            continue
         nuevo_mapa = _mapa_columnas_transbank(celdas)
         if nuevo_mapa:
             mapa = nuevo_mapa
