@@ -293,7 +293,9 @@ class TestDiccionarioHistorico(unittest.TestCase):
             dic = cp.leer_diccionario(ruta)
         clave = " ".join(sorted(cp.tokens_nombre(
             "Rodriguez Lagos Enrique Gonzalo")))   # otro orden, da lo mismo
-        self.assertEqual(dic[clave], "15009275-2")
+        self.assertEqual(dic["exacto"][clave], "15009275-2")
+        self.assertEqual(dic["nombres"],
+                         [("ENRIQUE GONZALO RODRIGUEZ LAGOS", "15009275-2")])
 
 
 class TestTransbankMultiHoja(unittest.TestCase):
@@ -369,3 +371,49 @@ class TestCartolaEmitida(unittest.TestCase):
         # el saldo jamás se cuela como cargo (bug del 2026-08-01: sumaba
         # $11 mil millones de "cargos")
         self.assertNotIn(147675986, [m["cargo"] for m in movs])
+
+
+class TestCartolaEmitidaGlosasRecortadas(unittest.TestCase):
+    """La Cartola Emitida corta las glosas: 'PAGO:Abonos debito y cred'
+    (sin 'Transbank') y nombres de pagador truncados ('DANIELA ALEJ')."""
+
+    def test_transbank_recortado_clasifica(self):
+        mov = {"fecha": date(2026, 7, 1), "canal": "CENTRAL", "docto": "",
+               "descripcion": "PAGO:Abonos debito y cred", "cargo": 0,
+               "abono": 133083, "saldo": 1}
+        resumen = [{"fecha": date(2026, 7, 1), "total": 133083, "n_ventas": 4}]
+        clas, rut, concepto, estado, conf, nota = cp.clasificar(mov, resumen, [])
+        self.assertEqual(clas, "ABONO TRANSBANK")
+        self.assertEqual(estado, "listo")
+
+    def test_nombre_recortado_matchea_por_prefijo(self):
+        dic = {"exacto": {}, "nombres": [
+            ("DANIELA ALEJANDRA SOTO PEREZ", "12345678-5"),
+            ("PEDRO PABLO ROJAS SOTO", "1-9"),
+        ]}
+        mov = {"fecha": date(2026, 7, 1), "canal": "INTERNET", "docto": "",
+               "descripcion": "TRASPASO DE:DANIELA ALEJ", "cargo": 0,
+               "abono": 103981, "saldo": 1}
+        clas, rut, concepto, estado, conf, nota = cp.clasificar(mov, [], [], dic)
+        self.assertEqual(rut, "12345678-5")
+        self.assertEqual(conf, "alta")
+        self.assertIn("recortado", nota)
+
+    def test_prefijo_ambiguo_no_propone(self):
+        dic = {"exacto": {}, "nombres": [
+            ("DANIELA ALEJANDRA SOTO PEREZ", "12345678-5"),
+            ("DANIELA ALEJANDRA MUNOZ LARA", "87654321-6"),
+        ]}
+        mov = {"fecha": date(2026, 7, 1), "canal": "INTERNET", "docto": "",
+               "descripcion": "TRASPASO DE:DANIELA ALEJ", "cargo": 0,
+               "abono": 103981, "saldo": 1}
+        clas, rut, concepto, estado, conf, nota = cp.clasificar(mov, [], [], dic)
+        self.assertEqual(rut, "")   # dos candidatas: mejor no proponer
+
+    def test_prefijo_corto_no_propone(self):
+        dic = {"exacto": {}, "nombres": [("SURE SPA GRUPO", "76000000-K")]}
+        mov = {"fecha": date(2026, 7, 1), "canal": "INTERNET", "docto": "",
+               "descripcion": "TRASPASO DE:SURE", "cargo": 0,
+               "abono": 10598, "saldo": 1}
+        clas, rut, concepto, estado, conf, nota = cp.clasificar(mov, [], [], dic)
+        self.assertEqual(rut, "")   # menos de 10 letras: demasiado ambiguo

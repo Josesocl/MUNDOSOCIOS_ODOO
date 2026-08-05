@@ -53,7 +53,9 @@ ENCABEZADO_SALIDA = [
     "CLASIFICACION", "CONFIANZA", "NOTA CRUZADOR",
 ]
 
-GLOSA_TRANSBANK = re.compile(r"^Pago:\s*Abonos\s+Debito\s+Y\s+Credito\s+Transbank", re.I)
+# 'Transbank' es opcional: la Cartola Emitida corta la glosa
+# ('PAGO:Abonos debito y cred…')
+GLOSA_TRANSBANK = re.compile(r"^Pago:\s*Abonos\s+debito\s+y\s+cred", re.I)
 GLOSA_PAC = re.compile(r"^Pac\s+Multib", re.I)
 GLOSA_TRASPASO = re.compile(r"^Traspaso\s+De:\s*(.+)$", re.I)
 GLOSA_SPAV_ABONO = re.compile(r"^Transferencia\s+De\s+Otro\s+Banco", re.I)
@@ -363,17 +365,48 @@ def match_socio(nombre_pagador: str, socios):
     return mejor, mejor_score
 
 
+def _nombre_plano(nombre):
+    plano = "".join(c for c in unicodedata.normalize("NFD", str(nombre).upper())
+                    if unicodedata.category(c) != "Mn")
+    return re.sub(r"\s+", " ", re.sub(r"[^A-Z ]", " ", plano)).strip()
+
+
 def leer_diccionario(ruta: Path):
     """CSV nombre_cartola;rut (lo genera calibrar_preconciliacion.py).
-    Clave: tokens del nombre ordenados — insensible a orden y tildes."""
-    dic = {}
+
+    Devuelve {'exacto': {clave_tokens: rut}, 'nombres': [(plano, rut)]}.
+    'exacto' es insensible a orden y tildes; 'nombres' permite reconocer
+    los nombres RECORTADOS de la Cartola Emitida ('TRASPASO DE:DANIELA
+    ALEJ') por prefijo del nombre completo del histórico."""
+    exacto, nombres = {}, []
     with open(ruta, newline="", encoding="utf-8-sig") as f:
         for fila in csv.DictReader(f, delimiter=";"):
             nombre = (fila.get("nombre_cartola") or "").strip()
             rut = (fila.get("rut") or "").strip().upper()
             if nombre and rut:
-                dic[" ".join(sorted(tokens_nombre(nombre)))] = rut
-    return dic
+                exacto[" ".join(sorted(tokens_nombre(nombre)))] = rut
+                nombres.append((_nombre_plano(nombre), rut))
+    return {"exacto": exacto, "nombres": nombres}
+
+
+def _buscar_en_diccionario(pagador, diccionario):
+    """→ (rut, nota) o (None, None). Exacto primero; después por prefijo
+    inequívoco (nombre recortado por el banco)."""
+    if not diccionario:
+        return None, None
+    if "exacto" not in diccionario:            # compatibilidad: dict plano
+        diccionario = {"exacto": diccionario, "nombres": []}
+    rut = diccionario["exacto"].get(" ".join(sorted(tokens_nombre(pagador))))
+    if rut:
+        return rut, "identificado por preconciliaciones anteriores"
+    plano = _nombre_plano(pagador)
+    if len(plano) >= 10:
+        candidatos = {r for n, r in diccionario["nombres"]
+                      if n.startswith(plano)}
+        if len(candidatos) == 1:
+            return candidatos.pop(), ("identificado por histórico "
+                                      "(nombre recortado por el banco)")
+    return None, None
 
 
 def clasificar(mov, resumen_transbank, socios, diccionario=None):
@@ -399,10 +432,10 @@ def clasificar(mov, resumen_transbank, socios, diccionario=None):
             # 1º el diccionario histórico (pares pagador→RUT que el equipo ya
             # resolvió en preconciliaciones anteriores). Es la única fuente
             # que acierta cuando paga un tercero (persona por una empresa).
-            rut_hist = diccionario.get(" ".join(sorted(tokens_nombre(pagador))))
+            rut_hist, nota_hist = _buscar_en_diccionario(pagador, diccionario)
             if rut_hist:
                 return ("TRANSFERENCIA", rut_hist, "HISTORICO: mismo pagador",
-                        "P", "alta", "identificado por preconciliaciones anteriores")
+                        "P", "alta", nota_hist)
             # 2º match difuso contra el maestro — SOLO como pista conservadora:
             # calibración junio-26: proponer con umbral bajo produjo 26
             # propuestas erróneas (pagos de terceros). Nunca 'alta'.
