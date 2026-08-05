@@ -54,7 +54,7 @@
 
 | # | Entrega | Depende de | Esfuerzo |
 |---|---|---|---|
-| B-01 | ~~Calibración del cruzador~~ **RESUELTA (2026-08-01)** con junio real: 197/198 filas emparejadas, Transbank y PAC cuadrados al peso; match por nombre recalibrado (los 26 errores eran terceros pagando por el socio → el diccionario histórico `diccionario_nombre_rut.csv` pasa a ser fuente primaria y el match difuso es conservador). Junio con diccionario: 79% clasificado (vs 51%). Prueba real: julio con el diccionario de junio | — | Hecha |
+| B-01 | ~~Calibración del cruzador~~ **RESUELTA (2026-08-01)** con junio real: 197/198 filas emparejadas, Transbank y PAC cuadrados al peso; match por nombre recalibrado (los 26 errores eran terceros pagando por el socio → el diccionario histórico `diccionario_nombre_rut.csv` pasa a ser fuente primaria y el match difuso es conservador). Junio con diccionario: 79% clasificado (vs 51%). **Prueba real julio (2026-08-02):** 178/178 filas emparejadas, Transbank \$31.297.966 y PAC \$22.387.438 al peso; 41 aciertos / 7 errores (85% de precisión) — los 7 eran pagadores multi-socio, ahora tratados como aviso con candidatos. Formatos nuevos soportados: Cartola Emitida (CSV ;) y archivo Transbank multi-hoja del equipo. Diccionarios acumulables por mes | — | Hecha |
 | B-02 | **Cruzador v2**: detalle Transbank por código de comercio + estado de deuda por socio + aging de morosidad + CSV de estados para Zoho + paquete Addval + control 48 h | I-03, I-04, D-04 | 2 días |
 | B-03 | **Distribuidor PAC**: parser de la rendición por convenio → rebaja propuesta por socio | I-01 | 1 día |
 | B-04 | **Rechazos semi-automáticos**: parser de rechazos → lista para campaña + marca de reintento | I-02 | 0,5 día |
