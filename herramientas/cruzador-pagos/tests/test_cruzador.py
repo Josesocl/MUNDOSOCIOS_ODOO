@@ -293,7 +293,7 @@ class TestDiccionarioHistorico(unittest.TestCase):
             dic = cp.leer_diccionario(ruta)
         clave = " ".join(sorted(cp.tokens_nombre(
             "Rodriguez Lagos Enrique Gonzalo")))   # otro orden, da lo mismo
-        self.assertEqual(dic["exacto"][clave], "15009275-2")
+        self.assertEqual(dic["exacto"][clave], {"15009275-2"})
         self.assertEqual(dic["nombres"],
                          [("ENRIQUE GONZALO RODRIGUEZ LAGOS", "15009275-2")])
 
@@ -448,3 +448,34 @@ class TestFronteraEntreHojas(unittest.TestCase):
         self.assertEqual(len(abonos), 1)
         self.assertEqual(abonos[0]["total"], 133083)
         self.assertNotIn(999999, [a["total"] for a in abonos])
+
+
+class TestPagadorConVariosSocios(unittest.TestCase):
+    """Calibración julio-26: los 7 errores eran pagadores que pagan por
+    MÁS de un socio (SURE SPA, familiares). El cruzador ya no elige uno
+    al azar: lista los candidatos en la nota."""
+
+    def test_multi_rut_no_propone_pero_lista(self):
+        dic = {"exacto": {" ".join(sorted(cp.tokens_nombre("SURE SPA X"))):
+                          {"13307585-2", "19835030-3"}}, "nombres": []}
+        mov = {"fecha": date(2026, 7, 28), "canal": "INTERNET", "docto": "",
+               "descripcion": "TRASPASO DE:SURE SPA X", "cargo": 0,
+               "abono": 10620, "saldo": 1}
+        clas, rut, concepto, estado, conf, nota = cp.clasificar(mov, [], [], dic)
+        self.assertEqual(rut, "")
+        self.assertIn("varios socios", concepto)
+        self.assertIn("13307585-2", nota)
+        self.assertIn("19835030-3", nota)
+
+    def test_diccionarios_de_varios_meses_se_suman(self):
+        with tempfile.TemporaryDirectory() as d:
+            r1, r2 = Path(d) / "jun.csv", Path(d) / "jul.csv"
+            r1.write_text("nombre_cartola;rut\nSURE SPA X;13307585-2\n",
+                          encoding="utf-8-sig")
+            r2.write_text("nombre_cartola;rut\nSURE SPA X;19835030-3\n"
+                          "OTRO PAGADOR UNICO;1-9\n", encoding="utf-8-sig")
+            dic = cp.leer_diccionario([r1, r2])
+        clave = " ".join(sorted(cp.tokens_nombre("SURE SPA X")))
+        self.assertEqual(dic["exacto"][clave], {"13307585-2", "19835030-3"})
+        rut, nota, cand = cp._buscar_en_diccionario("Otro Pagador Unico", dic)
+        self.assertEqual(rut, "1-9")

@@ -199,14 +199,20 @@ def main(argv=None):
         m = GLOSA_TRASPASO.match(r["descripcion"])
         if m and len(r["ruts"]) == 1:
             nombre = re.sub(r"\s+", " ", m.group(1)).strip().upper()
-            vistos.setdefault(nombre, r["ruts"][0])
+            # un pagador puede pagar por VARIOS socios: se guardan todos
+            # (el cruzador no propone en esos casos, lista los candidatos)
+            vistos.setdefault(nombre, set()).add(r["ruts"][0])
     with open(ruta_dic, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f, delimiter=";")
         w.writerow(["nombre_cartola", "rut"])
-        for nombre, rut in sorted(vistos.items()):
-            w.writerow([nombre, rut])
-    print(f"\nDiccionario aprendido: {ruta_dic} ({len(vistos)} nombres). "
-          "Se usará para mejorar el match de los próximos meses.")
+        for nombre in sorted(vistos):
+            for rut in sorted(vistos[nombre]):
+                w.writerow([nombre, rut])
+    multi = sum(1 for ruts in vistos.values() if len(ruts) > 1)
+    print(f"\nDiccionario aprendido: {ruta_dic} ({len(vistos)} nombres, "
+          f"{multi} con varios socios). Se usará para mejorar el match de "
+          "los próximos meses (se puede pasar junto a los de meses "
+          "anteriores: --diccionario dic_junio.csv dic_julio.csv).")
     return 0
 
 

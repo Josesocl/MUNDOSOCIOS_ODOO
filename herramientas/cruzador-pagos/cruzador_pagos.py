@@ -384,42 +384,53 @@ def _nombre_plano(nombre):
     return re.sub(r"\s+", " ", re.sub(r"[^A-Z ]", " ", plano)).strip()
 
 
-def leer_diccionario(ruta: Path):
-    """CSV nombre_cartola;rut (lo genera calibrar_preconciliacion.py).
+def leer_diccionario(rutas):
+    """CSV(s) nombre_cartola;rut (los genera calibrar_preconciliacion.py).
+    Acepta varias rutas: los diccionarios de distintos meses se suman.
 
-    Devuelve {'exacto': {clave_tokens: rut}, 'nombres': [(plano, rut)]}.
-    'exacto' es insensible a orden y tildes; 'nombres' permite reconocer
-    los nombres RECORTADOS de la Cartola Emitida ('TRASPASO DE:DANIELA
-    ALEJ') por prefijo del nombre completo del histórico."""
+    Devuelve {'exacto': {clave_tokens: {ruts}}, 'nombres': [(plano, rut)]}.
+    'exacto' es insensible a orden y tildes; un mismo pagador puede tener
+    VARIOS ruts (terceros que pagan por más de un socio — calibración
+    julio-26). 'nombres' permite reconocer los nombres RECORTADOS de la
+    Cartola Emitida ('TRASPASO DE:DANIELA ALEJ') por prefijo."""
+    if isinstance(rutas, (str, Path)):
+        rutas = [rutas]
     exacto, nombres = {}, []
-    with open(ruta, newline="", encoding="utf-8-sig") as f:
-        for fila in csv.DictReader(f, delimiter=";"):
-            nombre = (fila.get("nombre_cartola") or "").strip()
-            rut = (fila.get("rut") or "").strip().upper()
-            if nombre and rut:
-                exacto[" ".join(sorted(tokens_nombre(nombre)))] = rut
-                nombres.append((_nombre_plano(nombre), rut))
+    for ruta in rutas:
+        with open(ruta, newline="", encoding="utf-8-sig") as f:
+            for fila in csv.DictReader(f, delimiter=";"):
+                nombre = (fila.get("nombre_cartola") or "").strip()
+                rut = (fila.get("rut") or "").strip().upper()
+                if nombre and rut:
+                    clave = " ".join(sorted(tokens_nombre(nombre)))
+                    exacto.setdefault(clave, set()).add(rut)
+                    nombres.append((_nombre_plano(nombre), rut))
     return {"exacto": exacto, "nombres": nombres}
 
 
 def _buscar_en_diccionario(pagador, diccionario):
-    """→ (rut, nota) o (None, None). Exacto primero; después por prefijo
-    inequívoco (nombre recortado por el banco)."""
+    """→ (rut, nota, candidatos). rut se entrega solo si el histórico es
+    INEQUÍVOCO; si el pagador registró varios socios, van en candidatos."""
     if not diccionario:
-        return None, None
+        return None, None, set()
     if "exacto" not in diccionario:            # compatibilidad: dict plano
         diccionario = {"exacto": diccionario, "nombres": []}
-    rut = diccionario["exacto"].get(" ".join(sorted(tokens_nombre(pagador))))
-    if rut:
-        return rut, "identificado por preconciliaciones anteriores"
+    valor = diccionario["exacto"].get(" ".join(sorted(tokens_nombre(pagador))))
+    ruts = (valor if isinstance(valor, set) else {valor}) if valor else set()
+    if len(ruts) == 1:
+        return next(iter(ruts)), "identificado por preconciliaciones anteriores", ruts
+    if len(ruts) > 1:
+        return None, None, ruts
     plano = _nombre_plano(pagador)
     if len(plano) >= 10:
         candidatos = {r for n, r in diccionario["nombres"]
                       if n.startswith(plano)}
         if len(candidatos) == 1:
             return candidatos.pop(), ("identificado por histórico "
-                                      "(nombre recortado por el banco)")
-    return None, None
+                                      "(nombre recortado por el banco)"), candidatos
+        if len(candidatos) > 1:
+            return None, None, candidatos
+    return None, None, set()
 
 
 def clasificar(mov, resumen_transbank, socios, diccionario=None):
@@ -445,10 +456,18 @@ def clasificar(mov, resumen_transbank, socios, diccionario=None):
             # 1º el diccionario histórico (pares pagador→RUT que el equipo ya
             # resolvió en preconciliaciones anteriores). Es la única fuente
             # que acierta cuando paga un tercero (persona por una empresa).
-            rut_hist, nota_hist = _buscar_en_diccionario(pagador, diccionario)
+            rut_hist, nota_hist, candidatos = _buscar_en_diccionario(pagador,
+                                                                     diccionario)
             if rut_hist:
                 return ("TRANSFERENCIA", rut_hist, "HISTORICO: mismo pagador",
                         "P", "alta", nota_hist)
+            if candidatos:
+                # pagador que históricamente pagó por VARIOS socios (ej:
+                # una empresa paga los seguros de varias personas) — no se
+                # elige uno al azar: se listan para quien concilia.
+                lista = ", ".join(sorted(candidatos)[:5])
+                return ("TRANSFERENCIA", "", "HISTORICO: pagador con varios socios",
+                        "P", "media", f"históricamente pagó por: {lista}")
             # 2º match difuso contra el maestro — SOLO como pista conservadora:
             # calibración junio-26: proponer con umbral bajo produjo 26
             # propuestas erróneas (pagos de terceros). Nunca 'alta'.
@@ -507,9 +526,10 @@ def main(argv=None):
                     help="Informe Transbank 'Resumen histórico de abonos'")
     ap.add_argument("--maestro", type=Path, default=None,
                     help="CSV rut,nombre para identificar transferencias")
-    ap.add_argument("--diccionario", type=Path, default=None,
-                    help="CSV nombre_cartola;rut aprendido de preconciliaciones "
-                         "anteriores (lo genera calibrar_preconciliacion.py)")
+    ap.add_argument("--diccionario", type=Path, nargs="+", default=None,
+                    help="CSV(s) nombre_cartola;rut aprendidos de preconciliaciones "
+                         "anteriores (los genera calibrar_preconciliacion.py; "
+                         "se pueden pasar varios meses y se suman)")
     ap.add_argument("--salida", type=Path, default=Path("."))
     args = ap.parse_args(argv)
 
@@ -521,7 +541,8 @@ def main(argv=None):
     socios = leer_maestro(args.maestro) if args.maestro else []
     diccionario = leer_diccionario(args.diccionario) if args.diccionario else {}
     if diccionario:
-        print(f"Diccionario histórico: {len(diccionario)} pagadores conocidos")
+        print(f"Diccionario histórico: {len(diccionario['exacto'])} "
+              "pagadores conocidos")
 
     contadores = {}
     for mov in movimientos:
