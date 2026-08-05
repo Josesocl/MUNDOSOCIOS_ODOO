@@ -294,3 +294,39 @@ class TestDiccionarioHistorico(unittest.TestCase):
         clave = " ".join(sorted(cp.tokens_nombre(
             "Rodriguez Lagos Enrique Gonzalo")))   # otro orden, da lo mismo
         self.assertEqual(dic[clave], "15009275-2")
+
+
+class TestTransbankMultiHoja(unittest.TestCase):
+    """Regresión: '07 TRANSBANK JULIO 26.xlsx' es el archivo de trabajo del
+    equipo con varias hojas — la hoja 'Banco' (líneas de la cartola, con
+    fechas y montos que NO son el resumen) antes del 'Informe' con el
+    resumen histórico. Solo deben tomarse las filas bajo el encabezado."""
+
+    def test_toma_solo_la_hoja_del_resumen(self):
+        from openpyxl import Workbook
+        with tempfile.TemporaryDirectory() as tmp:
+            ruta = Path(tmp) / "07 TRANSBANK JULIO 26.xlsx"
+            wb = Workbook()
+            banco = wb.active
+            banco.title = "Banco"
+            banco.append(["Fecha", None, "Descripción", None,
+                          "Canal o Sucursal", "Nro. Docto.",
+                          "Cargos (CLP)", "Abonos (CLP)"])
+            banco.append(["01/07/2026", None,
+                          "Pago: Abonos Debito Y Credito Transbank", None,
+                          "Oficina Central", "", "", "133.083"])
+            informe = wb.create_sheet("Informe")
+            informe.append([None, "Fecha de abono", "Total ventas (+)",
+                            "Comisión", "Anuladas", "Cobros", "Descontados",
+                            "Devolución", "Total abono", "Cuenta de depósito",
+                            "N° de ventas"])
+            informe.append([None, "01/07/2026", "134700", "1617", "0", "0",
+                            "1617", "0", "133083", "BANCO DE CHILE", "4"])
+            informe.append([None, "02/07/2026", "0", "0", "0", "0", "0",
+                            "0", "0", "-", "0"])
+            wb.save(ruta)
+            abonos = cp.leer_resumen_transbank(ruta)
+        # solo la fila del Informe; la línea de la hoja Banco no se cuela
+        self.assertEqual(len(abonos), 1)
+        self.assertEqual(abonos[0]["total"], 133083)
+        self.assertEqual(abonos[0]["n_ventas"], 4)

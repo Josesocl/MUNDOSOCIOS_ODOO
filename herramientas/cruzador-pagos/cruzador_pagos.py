@@ -103,8 +103,12 @@ def leer_tabla(ruta: Path):
     datos = ruta.read_bytes()
     if datos[:4] == b"PK\x03\x04":                     # xlsx
         from openpyxl import load_workbook
-        ws = load_workbook(io.BytesIO(datos), read_only=True, data_only=True).active
-        return [["" if c is None else c for c in fila] for fila in ws.iter_rows(values_only=True)]
+        wb = load_workbook(io.BytesIO(datos), read_only=True, data_only=True)
+        filas = []
+        for ws in wb.worksheets:                       # TODAS las hojas: los
+            for fila in ws.iter_rows(values_only=True):  # archivos del equipo
+                filas.append(["" if c is None else c for c in fila])
+        return filas
     if datos[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":  # OLE: xls binario real
         raise SystemExit(f"{ruta.name}: es un .xls binario; guardarlo como "
                          ".xlsx desde Excel y reintentar.")
@@ -274,9 +278,14 @@ def leer_resumen_transbank(ruta: Path):
     Soporta el layout original (posiciones fijas 0/7/9) y el archivo
     guardado como .xlsx desde Excel (columnas corridas, ubicadas por el
     encabezado 'Fecha de abono / Total abono / N° de ventas')."""
+    filas = [list(f) + [""] * 12 for f in leer_tabla(ruta)]
+    # Si el archivo trae el encabezado del resumen EN CUALQUIER hoja, solo
+    # valen las filas bajo ese encabezado (los archivos de trabajo del
+    # equipo, ej. '07 TRANSBANK JULIO 26.xlsx', traen otras hojas con
+    # fechas y montos que NO son abonos del resumen).
+    con_encabezado = any(_mapa_columnas_transbank(f) for f in filas)
     abonos, mapa = [], None
-    for fila in leer_tabla(ruta):
-        celdas = list(fila) + [""] * 12
+    for celdas in filas:
         nuevo_mapa = _mapa_columnas_transbank(celdas)
         if nuevo_mapa:
             mapa = nuevo_mapa
@@ -286,10 +295,12 @@ def leer_resumen_transbank(ruta: Path):
             total = parse_monto(celdas[mapa["total"]])
             n_ventas = parse_monto(celdas[mapa["n_ventas"]]) \
                 if "n_ventas" in mapa else 0
-        else:
+        elif not con_encabezado:
             fecha = parse_fecha(celdas[0])
             total = parse_monto(celdas[7])
             n_ventas = parse_monto(celdas[9])
+        else:
+            continue
         if fecha is None:
             continue
         if total > 0:
