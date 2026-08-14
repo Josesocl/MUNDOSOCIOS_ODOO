@@ -80,8 +80,19 @@ Mapeo sugerido para el alta de proveedores (checklist v2.0 / módulo Zoho): `raz
 - **Validador SII** (Mac, `Automatizacion Puente Compras/Validador SII…`): agregar proveedor `simpleapi` equivalente a este cliente; BaseAPI y API Gateway quedan como legado. El proxy Squid de GCP **ya no es necesario** (SimpleAPI es API directa con key) — se puede apagar la VM.
 - **Zoho CRM** (módulo de Proveedores con Alexander Gutiérrez): la función personalizada de validación debe llamar a **SimpleAPI**, no a API Gateway. Enviarle a Alexander este README y el endpoint confirmado.
 
+## Alta de proveedor automatizada (`alta_proveedor.py`)
+
+Automatiza los pasos 1-3 del alta actual (BP Creación de Proveedor): verificación SII vía SimpleAPI con **registro fechado** (HTML + bitácora CSV en `verificaciones/` — resuelve PC-P2), semáforo del checklist (sin inicio de actividades = **NO APTO**, no se crea), y el bloque de campos listo para digitar en Manager+ sin errores de tipeo.
+
+```bash
+python3 alta_proveedor.py --rut 76123456-7 --correo-comercial ventas@prov.cl
+python3 alta_proveedor.py --rut 76123456-7 --mock    # prueba sin red ni cuota
+```
+
+Usa el mismo caché/cuota del cliente (repetir un RUT no gasta consultas). Datos bancarios y contacto siguen en la Ficha de Proveedor; la decisión y la digitación son de una persona.
+
 ## Tests
 
 ```bash
-python3 -m unittest discover tests    # 6 tests, sin red
+python3 -m unittest discover tests    # 10 tests, sin red
 ```
