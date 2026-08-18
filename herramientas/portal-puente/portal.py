@@ -615,10 +615,15 @@ class Portal(BaseHTTPRequestHandler):
                     self._responder("No existe", codigo=404)
                     return
                 contenido = archivo_manager(s["datos"], s.get("evaluacion", {}))
-                bitacora("archivo_manager", f"solicitud {sid}")
+                nombre = (f"CARGA_MANAGER_{sid}_"
+                          f"{datetime.now():%Y%m%d-%H%M}.csv")
+                carpeta = DATOS / "manager"
+                carpeta.mkdir(parents=True, exist_ok=True)
+                (carpeta / nombre).write_text(contenido, encoding="utf-8-sig")
+                bitacora("archivo_manager", f"solicitud {sid} → {nombre}")
                 self._responder(contenido.encode("utf-8-sig"),
                                 "text/csv; charset=utf-8",
-                                descarga=f"CARGA_MANAGER_{sid}.csv")
+                                descarga=nombre)
             elif ruta.path == "/proveedor":
                 self._responder(vista_proveedor(q))
             elif ruta.path == "/presupuesto":
