@@ -5,7 +5,18 @@ CONFIDENCIAL — MundoSocios CChC · Borrador para revisión
 Insumo para implementación Odoo Enterprise
 Proyecto: Implementación Odoo Enterprise — MundoSocios CChC · Fase: Fase 0 — Levantamiento y Diseño
 Fuentes: Patricio Fernández (Adm. y Finanzas), Cecilia Ramírez (OC/Compras), manuales operativos
-Elaborado por: JR Jottar Consultoría · Versión: **2.1 — 2026-08-14** · Borrador para validación
+Elaborado por: JR Jottar Consultoría · Versión: **2.2 — 2026-08-18** · Borrador para validación
+
+### Registro de cambios v2.2 (respecto de v2.1)
+
+1.  Matriz de aprobaciones §2.5 corregida según definición de MundoSocios
+    (2026-08-18): **en el puente rige la matriz de 4 tramos en CLP con
+    aprobadores nominados** (copia PF 2026-07/08); el esquema en UF por
+    rol pasa a ser el diseño para **Odoo** (§2.6).
+2.  Nueva §2.6: flujo de aprobación para Odoo (láminas PF 2026-08-07 +
+    flujos Caso 1/Caso 2), incluida la regla de **aprobación por
+    fracción de centro de costo** en gastos multi-partida. Documento
+    dedicado: `Flujo_Aprobacion_Compras_Odoo_v1.1.md`.
 
 ### Registro de cambios v2.1 (respecto de v2.0, revisada por MundoSocios)
 
@@ -90,13 +101,39 @@ CxP → recepción → expediente documental → lote de pago → TXT Banco de
 Chile (desarrollo; requiere Odoo.sh) → carga y aprobación bancaria →
 pago y conciliación.
 
-### 2.5 Matriz de aprobaciones (paramétrica, CLP bruto c/IVA) — validada por MundoSocios 2026-08
+### 2.5 Matriz de aprobaciones VIGENTE en el puente (CLP bruto c/IVA) — definición MundoSocios 2026-08-18
 
-| Tramo | Aprobador | Configuración Odoo |
-|---|---|---|
-| Hasta $500.000 | No requiere aprobación del líder del área | Automática si el solicitante es el dueño del CC |
-| $500.001 – $5.000.000 | Requiere aprobación del Líder del área | 1 nivel |
-| > $5.000.000 | Requiere aprobación del Líder del área + Gerente General | 2 niveles secuenciales |
+Rige hasta la salida en Odoo (aprobadores nominados, copia PF 2026-07/08):
+
+| Tramo | Aprobador |
+|---|---|
+| Hasta $500.000 | Dueño del presupuesto (por centro de costo) |
+| $500.001 – $1.000.000 | Cecilia Ramírez |
+| $1.000.001 – $5.000.000 | Patricio Fernández |
+| > $5.000.000 | Patricio Fernández + Constanza Daniels (Gerente General) |
+
+En Odoo esta matriz **cambia** al esquema paramétrico en UF por rol (§2.6);
+los bordes calzan: 13 UF ≈ $531.000 y 125 UF ≈ $5.100.000.
+
+### 2.6 Flujo de aprobación para Odoo (TO-BE, en UF) — láminas PF 2026-08-07
+
+Definido en los flujos Caso 1 (con OC) y Caso 2 (factura directa) —
+detalle y diagramas en `Flujo_Aprobacion_Compras_Odoo_v1.1.md`:
+
+- **Umbral de cotización:** compras ≥ **13 UF** exigen 2 cotizaciones
+  adjuntas; bajo eso, sin cotizaciones.
+- **Presupuesto bloqueante:** sin saldo presupuestario la compra se
+  detiene; solo el Gerente puede aprobar la excepción
+  (ampliación/reasignación). Sin excepción: solicitud cancelada (Caso 1)
+  o rechazo del DTE en el SII / devolución al proveedor (Caso 2, dentro
+  de la ventana legal de 8 días).
+- **Nivel de aprobación:** ≤ **125 UF** aprueba el Líder responsable;
+  > 125 UF aprueban Líder responsable + Gerente General (secuencial).
+- **Multi-partida:** si el gasto se divide en varias cuentas/centros de
+  costo, **cada Líder de CC aprueba su fracción** para liberar el flujo.
+- **Validación contable** (Caso 1): coincidencia OC/recepción, cuenta y
+  CC correctos; si falla, la factura queda **retenida** y vuelve a
+  validación tras corregir la imputación (nunca directo a pago).
 
 ## 3. Subprocesos
 
@@ -160,7 +197,7 @@ Socios?
 |---|---|---|---|
 | TXT Banco de Chile | Desarrollo | Crítica | No nativo; requiere Odoo.sh; formato cta. 8001104309 |
 | Match factura ↔ OC | Configuración | Alta | Nativo (RUT + ref. OC) |
-| Aprobaciones paramétricas | Configuración | Alta | Nativo en Purchase (matriz §2.5 validada) |
+| Aprobaciones paramétricas | Configuración | Alta | Nativo en Purchase por orden completa (esquema UF §2.6); la aprobación por fracción de CC (multi-partida) NO es nativa — requiere Studio/desarrollo |
 | Conciliación bancaria | Configuración | Alta | Nativo; importación de extracto |
 | Portal del proveedor | Estándar | Media | Cotizaciones por portal |
 | Validación SII | Integración | Alta | **Resuelta en el puente vía SimpleAPI** (cliente + alta_proveedor operativos); en Odoo se replica con el mismo servicio |
