@@ -3,28 +3,32 @@
 
 Aplicación web LOCAL para los colaboradores de MundoSocios: corre en un
 computador (Mac o Windows) y el resto del equipo la usa desde el
-navegador por red local. No reemplaza a Zoho (formularios y adjuntos) ni
-a Manager+ (registro contable): cubre el tramo intermedio del puente.
+navegador por red local. No reemplaza a Zoho (formularios, adjuntos y
+APROBACIONES) ni a Manager+ (registro contable): cubre el tramo
+intermedio del puente.
 
-Módulos:
-  1. Bandeja de solicitudes de compra — se alimenta pegando el registro
-     de Zoho (vista del formulario) o importando el export CSV del
-     módulo "Formularios de Solicitud". Checklist automático: campos
-     obligatorios, RUT válido, proveedor APTO (SII), tramo y aprobador
-     según la matriz vigente, cotizaciones (con la regla de excepción:
-     sin ambas cotizaciones solo aprueba Adm. y Finanzas o la Gerencia
-     General) y saldo presupuestario del centro de costo.
-  2. Alta de proveedor — verificación SII vía SimpleAPI con registro
-     fechado (usa herramientas/sii-simpleapi).
-  3. Archivo de carga para Manager+ — CSV con los datos de la solicitud
-     aprobada y del proveedor, en el orden de las pantallas.
-  4. Presupuesto por centro de costo — saldo inicial menos comprometido.
-  5. Validador del TXT de nómina (opcional, usa validador-txt-banco).
-  6. Bitácora de todo lo anterior.
+Módulos (v2, cambios MundoSocios 2026-08-19):
+  1. Bandeja de solicitudes — se alimenta pegando el registro de Zoho o
+     importando el export CSV. Checklist de VERIFICACIÓN (no aprueba por
+     monto: la aprobación viene de Zoho): campos obligatorios, RUT
+     válido, proveedor APTO (ficha completa), estado en Zoho,
+     cotizaciones (informativo) y saldo presupuestario del CC.
+     Registro de la OC emitida en Manager+ (N°, fecha, neto/IVA/total,
+     expediente) según la Plantilla OC.
+  2. Proveedores — verificación SII (SimpleAPI) + FICHA COMPLETA del
+     proveedor (checklist de campos críticos v2.0: identificación,
+     representantes, DTE, datos bancarios, condiciones). Regla de
+     avance: APTO solo con SII vigente y datos bancarios completos.
+     Para proveedor nuevo genera el documento de carga a Manager+.
+  3. Presupuesto por centro de costo (saldo inicial − comprometido).
+  4. Bitácora de todo.
+
+(El validador del TXT bancario se quitó del portal por decisión
+MundoSocios 2026-08-19: el TXT de pago no se usará. La herramienta
+sigue disponible aparte en ../validador-txt-banco.)
 
 Uso (el equipo NO usa esto: usa el doble clic de Iniciar_Portal):
     python3 portal.py            # abre en http://localhost:8765
-    python3 portal.py --puerto 9000
 
 Sin dependencias externas: Python 3.9+ puro.
 """
@@ -34,6 +38,7 @@ import csv
 import html
 import io
 import json
+import os
 import re
 import socket
 import sys
@@ -47,35 +52,16 @@ from urllib.parse import parse_qs, urlparse
 BASE = Path(__file__).resolve().parent
 DATOS = BASE / "datos_portal"
 RUTA_SII = BASE.parent / "sii-simpleapi"
-RUTA_TXT = BASE.parent / "validador-txt-banco"
-for _ruta in (RUTA_SII, RUTA_TXT):
-    if _ruta.is_dir():
-        sys.path.insert(0, str(_ruta))
+if RUTA_SII.is_dir():
+    sys.path.insert(0, str(RUTA_SII))
 
 try:
     import alta_proveedor
     import cliente_simpleapi
 except Exception:            # el portal funciona igual sin el módulo SII
     alta_proveedor = cliente_simpleapi = None
-try:
-    import validador_txt_banco
-except Exception:
-    validador_txt_banco = None
 
 # ---------------------------------------------------------------- reglas
-
-# Matriz de aprobación VIGENTE en el puente (CLP bruto c/IVA), definición
-# MundoSocios 2026-08-18 (BP Flujo Compras v2.2 §2.5). En Odoo cambia.
-TRAMOS = [
-    (500_000, "Dueño del presupuesto (centro de costo)", {"OPERADOR", "AYF", "GG"}),
-    (1_000_000, "Cecilia Ramírez", {"COMPRAS", "AYF", "GG"}),
-    (5_000_000, "Patricio Fernández (Adm. y Finanzas)", {"AYF", "GG"}),
-    (None, "Patricio Fernández + Constanza Daniels (GG)", {"GG"}),
-]
-# Roles con autoridad de EXCEPCIÓN (cotizaciones faltantes): AyF o GG.
-ROLES_EXCEPCION = {"AYF", "GG"}
-# Sin saldo presupuestario solo aprueba la Gerencia (flujos PF 2026-08).
-ROLES_PRESUPUESTO = {"GG"}
 
 CENTROS_DE_COSTO = ["MUNDO DESARROLLO", "MUNDO SALUD", "MUNDO ENCUENTRO",
                     "FOCO SOCIO", "ADMINISTRACIÓN", "MUNDO DIGITAL",
@@ -86,7 +72,6 @@ OPERADORES_INICIALES = [
     {"nombre": "Patricio Fernández", "rol": "AYF"},
     {"nombre": "Constanza Daniels", "rol": "GG"},
     {"nombre": "Marcos Ibarra", "rol": "OPERADOR"},
-    {"nombre": "Oriana (recaudación)", "rol": "OPERADOR"},
 ]
 
 # Etiquetas tal como salen en la vista del registro de Zoho (módulo
@@ -133,6 +118,41 @@ OBLIGATORIOS = [("actividad", "Nombre de actividad"),
                 ("valor_total", "Valor total"),
                 ("razon_social", "Razón social del proveedor"),
                 ("rut_proveedor", "RUT del proveedor")]
+
+# Ficha de proveedor (checklist de campos críticos v2.0 — espejo de
+# 01_Ficha_Proveedor_MundoSocios). (clave, etiqueta, sección, ¿bloqueante?)
+CAMPOS_FICHA = [
+    ("rut", "RUT", "1. Identificación", True),
+    ("razon_social", "Razón social", "1. Identificación", True),
+    ("nombre_fantasia", "Nombre de fantasía", "1. Identificación", False),
+    ("giro", "Giro / actividad", "1. Identificación", True),
+    ("correo", "Correo", "1. Identificación", True),
+    ("direccion", "Dirección", "1. Identificación", False),
+    ("comuna", "Comuna", "1. Identificación", False),
+    ("ciudad", "Ciudad", "1. Identificación", False),
+    ("region", "Región", "1. Identificación", False),
+    ("pais", "País", "1. Identificación", False),
+    ("telefono", "Teléfono", "1. Identificación", False),
+    ("rep1_nombre", "Rep. legal 1: nombre", "2. Representantes", False),
+    ("rep1_rut", "Rep. legal 1: RUT", "2. Representantes", False),
+    ("rep1_correo", "Rep. legal 1: correo", "2. Representantes", False),
+    ("rep1_telefono", "Rep. legal 1: teléfono", "2. Representantes", False),
+    ("rep2_nombre", "Rep. legal 2: nombre", "2. Representantes", False),
+    ("rep2_rut", "Rep. legal 2: RUT", "2. Representantes", False),
+    ("tipo_dte", "Tipo de DTE que emite", "3. Documento tributario", True),
+    ("banco", "Banco", "4. Datos bancarios", True),
+    ("tipo_cuenta", "Tipo de cuenta", "4. Datos bancarios", True),
+    ("numero_cuenta", "Número de cuenta", "4. Datos bancarios", True),
+    ("email_aviso_pago", "Email para aviso de pago", "4. Datos bancarios", True),
+    ("forma_pago", "Forma de pago", "5. Condiciones", False),
+    ("plazo_pago", "Plazo de pago (días)", "5. Condiciones", False),
+    ("moneda", "Moneda", "5. Condiciones", False),
+    ("contacto_nombre", "Contacto: nombre", "6. Contacto (Manager+)", False),
+    ("contacto_cargo", "Contacto: cargo", "6. Contacto (Manager+)", False),
+    ("contacto_correo", "Contacto: correo", "6. Contacto (Manager+)", False),
+    ("contacto_telefono", "Contacto: teléfono", "6. Contacto (Manager+)", False),
+    ("contacto_saludo", "Contacto: saludo (Estimado/a)", "6. Contacto (Manager+)", False),
+]
 
 # ---------------------------------------------------------------- utilidades
 
@@ -198,6 +218,10 @@ def parse_monto(texto):
         return 0
 
 
+def clp(monto):
+    return "$" + format(int(monto), ",.0f").replace(",", ".")
+
+
 def ahora():
     return datetime.now().strftime("%d-%m-%Y %H:%M")
 
@@ -224,6 +248,14 @@ def cargar_solicitudes():
 
 def guardar_solicitudes(s):
     _escribir_json("solicitudes.json", s)
+
+
+def cargar_proveedores():
+    return _leer_json("proveedores.json", {})
+
+
+def guardar_proveedores(p):
+    _escribir_json("proveedores.json", p)
 
 
 def cargar_presupuesto():
@@ -268,9 +300,7 @@ def leer_bitacora():
 
 
 def parsear_pegado(texto):
-    """Parsea la vista de un registro de Zoho pegada como texto.
-    Las etiquetas vienen como 'Etiqueta :' con el valor al lado o en la
-    línea siguiente."""
+    """Parsea la vista de un registro de Zoho pegada como texto."""
     datos = {}
     etiquetas = sorted(CAMPOS_ZOHO, key=len, reverse=True)
     lineas = [l.strip() for l in texto.splitlines()]
@@ -328,12 +358,12 @@ def parsear_csv(contenido):
     return filas
 
 
-# ---------------------------------------------------------------- proveedor APTO
+# ---------------------------------------------------------------- proveedores
 
 
-def estado_proveedor(rut):
-    """Busca la verificación SII más reciente del RUT en la bitácora del
-    módulo de alta. → ('APTO-SII'|'NO APTO'|None, fecha)."""
+def verificacion_sii(rut):
+    """Última verificación SII del RUT en la bitácora del módulo de alta.
+    → ('APTO-SII'|'NO APTO'|None, fecha)."""
     ruta = RUTA_SII / "verificaciones" / "registro_verificaciones.csv"
     if not ruta.exists():
         return None, ""
@@ -345,7 +375,39 @@ def estado_proveedor(rut):
     return ultimo
 
 
+def evaluar_ficha(ficha):
+    """Regla de avance del checklist v2.0: APTO solo con verificación SII
+    vigente Y todos los campos bloqueantes (bancarios incluidos)
+    completos. → (estado, faltantes)."""
+    faltantes = [etiqueta for clave, etiqueta, _, bloqueante in CAMPOS_FICHA
+                 if bloqueante and not str(ficha.get(clave, "")).strip()]
+    if ficha.get("sii_resultado") != "APTO-SII":
+        faltantes.insert(0, "Verificación SII vigente (APTO-SII)")
+    return ("APTO" if not faltantes else "EN VALIDACIÓN"), faltantes
+
+
+def estado_proveedor(rut):
+    """Estado del proveedor para el checklist de solicitudes.
+    → (estado, detalle): APTO (ficha completa) · FICHA-INCOMPLETA ·
+    SOLO-SII · NO-APTO-SII · None."""
+    fichas = cargar_proveedores()
+    ficha = fichas.get(rut)
+    if ficha:
+        estado, faltantes = evaluar_ficha(ficha)
+        if estado == "APTO":
+            return "APTO", f"ficha completa ({ficha.get('actualizado', '')})"
+        return "FICHA-INCOMPLETA", "faltan: " + ", ".join(faltantes[:4])
+    sii, fecha = verificacion_sii(rut)
+    if sii == "APTO-SII":
+        return "SOLO-SII", f"verificado SII {fecha}, sin ficha completa"
+    if sii == "NO APTO":
+        return "NO-APTO-SII", f"verificación SII {fecha}"
+    return None, ""
+
+
 # ---------------------------------------------------------------- checklist
+
+ESTADOS_COMPROMETEN = ("PROCESADA", "APROBADA", "APROBADA-EXCEPCION")
 
 
 def comprometido_por_cc(solicitudes, cc, excepto=None):
@@ -353,23 +415,16 @@ def comprometido_por_cc(solicitudes, cc, excepto=None):
     for sid, s in solicitudes.items():
         if sid == excepto:
             continue
-        if s.get("estado_portal", "").startswith("APROBADA") \
+        if s.get("estado_portal", "") in ESTADOS_COMPROMETEN \
                 and s.get("datos", {}).get("centro_costo") == cc:
             total += parse_monto(s["datos"].get("valor_total"))
     return total
 
 
-def tramo_de(monto):
-    for limite, aprobador, roles in TRAMOS:
-        if limite is None or monto <= limite:
-            return aprobador, roles
-    return TRAMOS[-1][1], TRAMOS[-1][2]
-
-
 def evaluar_solicitud(datos, solicitudes=None, presupuesto=None,
                       id_actual=None):
-    """Checklist completo de una solicitud. → dict con errores, avisos,
-    tramo, roles autorizados y si requiere excepción."""
+    """Checklist de VERIFICACIÓN de una solicitud. La aprobación por
+    monto NO se hace aquí: viene de Zoho (Estado de solicitud)."""
     solicitudes = solicitudes if solicitudes is not None else {}
     presupuesto = presupuesto if presupuesto is not None else {}
     errores, avisos = [], []
@@ -385,31 +440,44 @@ def evaluar_solicitud(datos, solicitudes=None, presupuesto=None,
         errores.append(f"RUT del proveedor inválido (módulo 11): {rut}")
     datos["rut_normalizado"] = rut
 
-    apto, fecha_apto = (None, "")
+    proveedor = (None, "")
     if rut and rut_valido(rut):
-        apto, fecha_apto = estado_proveedor(rut)
-        if apto == "APTO-SII":
-            avisos.append(f"Proveedor APTO-SII (verificado {fecha_apto})")
-        elif apto == "NO APTO":
-            errores.append(f"Proveedor NO APTO según verificación SII "
-                           f"({fecha_apto}) — no puede entrar a OC")
+        proveedor = estado_proveedor(rut)
+        estado_p, detalle_p = proveedor
+        if estado_p == "APTO":
+            avisos.append(f"Proveedor APTO — {detalle_p}")
+        elif estado_p == "FICHA-INCOMPLETA":
+            errores.append(f"Ficha de proveedor incompleta — {detalle_p}")
+        elif estado_p == "SOLO-SII":
+            errores.append(f"Proveedor {detalle_p}: completar la ficha en "
+                           "la pestaña Proveedores antes de la OC")
+        elif estado_p == "NO-APTO-SII":
+            errores.append(f"Proveedor NO APTO en el SII ({detalle_p}) — "
+                           "no puede entrar a OC")
         else:
-            avisos.append("Proveedor sin verificación SII registrada — "
-                          "verificarlo en la pestaña Proveedores")
+            errores.append("Proveedor sin verificación ni ficha: crearlo en "
+                           "la pestaña Proveedores")
 
-    monto = parse_monto(datos.get("valor_total"))
-    aprobador, roles = tramo_de(monto)
+    # La aprobación viene de Zoho: aquí solo se refleja.
+    estado_zoho = str(datos.get("estado_zoho", "")).strip()
+    if estado_zoho:
+        if _sin_tildes(estado_zoho).lower() == "aprobado":
+            avisos.append("Aprobada en Zoho")
+        else:
+            errores.append(f"Aún no aprobada en Zoho (estado: {estado_zoho})")
+    else:
+        avisos.append("Sin estado de Zoho en los datos pegados — confirmar "
+                      "la aprobación en Zoho antes de la OC")
 
-    requiere_excepcion = False
     posee = _sin_tildes(str(datos.get("posee_ambas_cotizaciones", ""))).strip().lower()
     if posee != "si":
-        requiere_excepcion = True
         motivo = datos.get("motivo_seleccion") or datos.get("motivo_proveedor") or ""
-        avisos.append("Sin ambas cotizaciones: solo puede aprobar Adm. y "
-                      "Finanzas o la Gerencia General"
-                      + (f" (motivo declarado: {motivo})" if motivo else
+        avisos.append("Sin ambas cotizaciones (la excepción la aprueba Adm. "
+                      "y Finanzas o la Gerencia en Zoho)"
+                      + (f" — motivo declarado: {motivo}" if motivo else
                          " — SIN motivo declarado"))
 
+    monto = parse_monto(datos.get("valor_total"))
     cc = datos.get("centro_costo", "")
     sin_saldo = False
     if cc:
@@ -419,65 +487,82 @@ def evaluar_solicitud(datos, solicitudes=None, presupuesto=None,
                 comprometido_por_cc(solicitudes, cc, excepto=id_actual)
             if monto > saldo:
                 sin_saldo = True
-                avisos.append(
-                    f"SIN saldo presupuestario en {cc} (saldo "
-                    f"${saldo:,.0f} vs ${monto:,.0f}): solo la Gerencia "
-                    "puede aprobar la ampliación/reasignación".replace(",", "."))
+                avisos.append(f"SIN saldo presupuestario en {cc} (saldo "
+                              f"{clp(saldo)} vs {clp(monto)}): corresponde "
+                              "ampliación/reasignación aprobada por la Gerencia")
             else:
-                avisos.append(f"Presupuesto {cc}: saldo disponible "
-                              f"${saldo:,.0f}".replace(",", "."))
+                avisos.append(f"Presupuesto {cc}: saldo disponible {clp(saldo)}")
         else:
             avisos.append(f"Centro de costo {cc} sin presupuesto cargado "
                           "(pestaña Presupuesto) — chequeo omitido")
 
-    roles_autorizados = set(roles)
-    if requiere_excepcion:
-        roles_autorizados &= ROLES_EXCEPCION
-    if sin_saldo:
-        roles_autorizados &= ROLES_PRESUPUESTO
-
     return {"errores": errores, "avisos": avisos, "monto": monto,
-            "tramo": aprobador, "roles_autorizados": sorted(roles_autorizados),
-            "requiere_excepcion": requiere_excepcion, "sin_saldo": sin_saldo,
-            "proveedor_apto": apto == "APTO-SII"}
+            "sin_saldo": sin_saldo, "proveedor": proveedor[0] or ""}
 
 
-# ---------------------------------------------------------------- Manager+
+# ---------------------------------------------------------------- documentos
 
 
-def archivo_manager(datos, evaluacion):
-    """CSV (;) con los datos en el orden de las pantallas de Manager+:
-    bloque proveedor + bloque OC. Layout de carga masiva por confirmar
-    con el equipo Manager+; mientras tanto, orden de digitación."""
+def _guardar_doc(nombre, contenido):
+    carpeta = DATOS / "manager"
+    carpeta.mkdir(parents=True, exist_ok=True)
+    (carpeta / nombre).write_text(contenido, encoding="utf-8-sig")
+    return nombre
+
+
+def documento_manager_proveedor(ficha):
+    """Documento de carga a Manager+ para proveedor NUEVO: todos los
+    campos de la ficha, en el orden de las pantallas (Mantenedores >
+    Clientes y/o proveedores + pestañas Contactos y Cuentas bancarias)."""
+    salida = io.StringIO()
+    w = csv.writer(salida, delimiter=";")
+    w.writerow(["SECCION", "CAMPO", "VALOR"])
+    w.writerow(["FICHA", "Estado ficha", evaluar_ficha(ficha)[0]])
+    w.writerow(["FICHA", "Verificación SII",
+                f"{ficha.get('sii_resultado', '')} {ficha.get('sii_fecha', '')}"])
+    for clave, etiqueta, seccion, _ in CAMPOS_FICHA:
+        w.writerow([seccion, etiqueta, ficha.get(clave, "")])
+    w.writerow(["MANAGER+", "Clasificación", "sin clasificación"])
+    w.writerow(["MANAGER+", "Tipo proveedor", ficha.get("tipo_proveedor")
+                or "Nacional (facturas)"])
+    return salida.getvalue()
+
+
+def archivo_manager_solicitud(datos, evaluacion, oc=None):
+    """CSV de la solicitud (y su OC si está registrada) para digitar en
+    Manager+."""
     rut = datos.get("rut_normalizado") or normalizar_rut(
         datos.get("rut_proveedor", ""))
     salida = io.StringIO()
     w = csv.writer(salida, delimiter=";")
     w.writerow(["BLOQUE", "CAMPO", "VALOR"])
-    prov = [("RUT", rut), ("Razón social", datos.get("razon_social", "")),
-            ("Giro", datos.get("giro", "")),
-            ("Clasificación", "sin clasificación"),
-            ("Tipo proveedor", "Nacional (facturas)"),
-            ("Plazo de pago", "30 días")]
-    for campo, valor in prov:
-        w.writerow(["PROVEEDOR", campo, valor])
-    oc = [("Fecha solicitud", datos.get("fecha_actividad", "")),
-          ("Solicitante", datos.get("solicitante") or datos.get("creado_por", "")),
-          ("Centro de costo", datos.get("centro_costo", "")),
-          ("Cuenta contable", datos.get("cuenta_contable", "")),
-          ("Proveedor (RUT)", rut),
-          ("Glosa / detalle", datos.get("detalle", "")),
-          ("Monto total (c/IVA)", evaluacion.get("monto", "")),
-          ("Fecha acuerdo de pago", datos.get("fecha_pago", "")),
-          ("Tramo de aprobación", evaluacion.get("tramo", "")),
-          ("Actividad Zoho", datos.get("actividad", ""))]
-    for campo, valor in oc:
-        w.writerow(["OC", campo, valor])
+    filas = [("Solicitud Zoho", datos.get("actividad", "")),
+             ("Solicitante", datos.get("solicitante")
+              or datos.get("creado_por", "")),
+             ("Estado Zoho", datos.get("estado_zoho", "")),
+             ("Centro de costo", datos.get("centro_costo", "")),
+             ("Cuenta contable", datos.get("cuenta_contable", "")),
+             ("Proveedor", datos.get("razon_social", "")),
+             ("RUT proveedor", rut),
+             ("Glosa / detalle", datos.get("detalle", "")),
+             ("Monto total (c/IVA)", evaluacion.get("monto", "")),
+             ("Fecha acuerdo de pago", datos.get("fecha_pago", ""))]
+    for campo, valor in filas:
+        w.writerow(["SOLICITUD", campo, valor])
+    if oc:
+        for campo, valor in [("N° OC (Manager+)", oc.get("numero", "")),
+                             ("Fecha emisión", oc.get("fecha", "")),
+                             ("Neto", oc.get("neto", "")),
+                             ("IVA (19%)", oc.get("iva", "")),
+                             ("TOTAL bruto", oc.get("total", "")),
+                             ("Expediente SharePoint",
+                              oc.get("expediente", "")),
+                             ("Registrada por", oc.get("operador", ""))]:
+            w.writerow(["OC", campo, valor])
     return salida.getvalue()
 
 
 # ---------------------------------------------------------------- HTML
-
 
 ESTILO = """<style>
 body{font-family:-apple-system,Segoe UI,sans-serif;margin:0;background:#f4f4f0;color:#222}
@@ -491,7 +576,7 @@ table{border-collapse:collapse;width:100%}
 th,td{border:1px solid #ddd;padding:.4em .6em;text-align:left;font-size:.92em}
 th{background:#eef2f7}
 .ok{color:#1a7f37;font-weight:600}.err{color:#c62828;font-weight:600}
-.warn{color:#9a6700}.chip{display:inline-block;padding:.1em .6em;border-radius:1em;font-size:.85em;font-weight:600}
+.chip{display:inline-block;padding:.1em .6em;border-radius:1em;font-size:.85em;font-weight:600}
 .c-lista{background:#e6f4ea;color:#1a7f37}.c-inc{background:#fdecea;color:#c62828}
 .c-apr{background:#dbeafe;color:#1e40af}.c-rec{background:#eee;color:#666}.c-exc{background:#fef3c7;color:#92400e}
 input,select,textarea{font:inherit;padding:.35em;border:1px solid #bbb;border-radius:4px;max-width:100%}
@@ -502,13 +587,15 @@ form.inline{display:inline}
 .aviso{background:#fef9e7;border:1px solid #f0e0a0;border-radius:6px;padding:.5em .8em;margin:.4em 0;font-size:.92em}
 .error{background:#fdecea;border:1px solid #f5c6c6;border-radius:6px;padding:.5em .8em;margin:.4em 0;font-size:.92em}
 small{color:#666}
+.grilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.5em 1em}
+.grilla label{display:flex;flex-direction:column;font-size:.88em;color:#444}
 </style>"""
 
 
 def pagina(titulo, cuerpo, pestana=""):
     tabs = [("/", "Solicitudes"), ("/nueva", "Ingresar solicitud"),
             ("/proveedor", "Proveedores"), ("/presupuesto", "Presupuesto"),
-            ("/txt", "TXT banco"), ("/bitacora", "Bitácora")]
+            ("/bitacora", "Bitácora")]
     nav = "".join(
         f'<a href="{u}" class="{"activo" if u == pestana else ""}">{t}</a>'
         for u, t in tabs)
@@ -523,22 +610,17 @@ Puente operativo hasta la salida en Odoo · MundoSocios / JR Jottar</footer>
 
 
 def _chip(estado):
-    clases = {"LISTA": "c-lista", "INCOMPLETA": "c-inc", "APROBADA": "c-apr",
-              "APROBADA-EXCEPCION": "c-exc", "RECHAZADA": "c-rec"}
-    return f'<span class="chip {clases.get(estado, "")}">{estado}</span>'
+    clases = {"LISTA": "c-lista", "INCOMPLETA": "c-inc",
+              "PROCESADA": "c-apr", "OBSERVADA": "c-exc", "APTO": "c-lista",
+              "EN VALIDACIÓN": "c-exc"}
+    return f'<span class="chip {clases.get(estado, "c-rec")}">{estado}</span>'
 
 
 def _selector_operador(config, nombre_campo="operador"):
     ops = "".join(f'<option>{html.escape(o["nombre"])}</option>'
                   for o in config["operadores"])
-    return f'<select name="{nombre_campo}" required><option value="">— ¿quién opera? —</option>{ops}</select>'
-
-
-def rol_de(config, nombre):
-    for o in config["operadores"]:
-        if o["nombre"] == nombre:
-            return o.get("rol", "OPERADOR")
-    return None
+    return (f'<select name="{nombre_campo}" required>'
+            f'<option value="">— ¿quién opera? —</option>{ops}</select>')
 
 
 # ---------------------------------------------------------------- servidor
@@ -550,7 +632,6 @@ def _leer_cuerpo(handler):
 
 
 def _parse_multipart(cuerpo, content_type):
-    """Parser mínimo de multipart/form-data (para subir CSV y TXT)."""
     m = re.search(r'boundary="?([^";]+)"?', content_type)
     if not m:
         return {}, {}
@@ -599,7 +680,7 @@ class Portal(BaseHTTPRequestHandler):
 
     def do_GET(self):
         ruta = urlparse(self.path)
-        q = parse_qs(ruta.query)
+        q = {k: v[0] for k, v in parse_qs(ruta.query).items()}
         try:
             if ruta.path == "/":
                 self._responder(vista_tablero())
@@ -608,45 +689,51 @@ class Portal(BaseHTTPRequestHandler):
             elif ruta.path.startswith("/solicitud/"):
                 self._responder(vista_solicitud(ruta.path.split("/")[2]))
             elif ruta.path.startswith("/manager/"):
-                sid = ruta.path.split("/")[2].replace(".csv", "")
-                sols = cargar_solicitudes()
-                s = sols.get(sid)
-                if not s:
-                    self._responder("No existe", codigo=404)
-                    return
-                contenido = archivo_manager(s["datos"], s.get("evaluacion", {}))
-                nombre = (f"CARGA_MANAGER_{sid}_"
-                          f"{datetime.now():%Y%m%d-%H%M}.csv")
-                carpeta = DATOS / "manager"
-                carpeta.mkdir(parents=True, exist_ok=True)
-                (carpeta / nombre).write_text(contenido, encoding="utf-8-sig")
-                bitacora("archivo_manager", f"solicitud {sid} → {nombre}")
-                self._responder(contenido.encode("utf-8-sig"),
-                                "text/csv; charset=utf-8",
-                                descarga=nombre)
+                self._descargar_manager_solicitud(
+                    ruta.path.split("/")[2].replace(".csv", ""))
             elif ruta.path == "/proveedor":
-                self._responder(vista_proveedor(q))
+                self._responder(vista_proveedores())
+            elif ruta.path == "/ficha":
+                self._responder(vista_ficha(q.get("rut", "")))
+            elif ruta.path.startswith("/manager_proveedor/"):
+                self._descargar_manager_proveedor(
+                    ruta.path.split("/")[2].replace(".csv", ""))
             elif ruta.path == "/presupuesto":
                 self._responder(vista_presupuesto())
-            elif ruta.path == "/txt":
-                self._responder(vista_txt())
             elif ruta.path == "/bitacora":
                 self._responder(vista_bitacora())
-            elif ruta.path.startswith("/descarga_txt/"):
-                nombre = Path(ruta.path.split("/", 2)[2]).name
-                archivo = DATOS / "txt" / nombre
-                if archivo.exists():
-                    self._responder(archivo.read_bytes(),
-                                    "text/plain; charset=utf-8",
-                                    descarga=nombre)
-                else:
-                    self._responder("No existe", codigo=404)
             else:
                 self._responder("No existe", codigo=404)
-        except Exception as e:                     # error visible, no caída
+        except Exception as e:
             self._responder(pagina("Error", f'<div class="error">Error '
                                    f'interno: {html.escape(str(e))}</div>'),
                             codigo=500)
+
+    def _descargar_manager_solicitud(self, sid):
+        sols = cargar_solicitudes()
+        s = sols.get(sid)
+        if not s:
+            self._responder("No existe", codigo=404)
+            return
+        contenido = archivo_manager_solicitud(
+            s["datos"], s.get("evaluacion", {}), s.get("oc"))
+        nombre = f"CARGA_MANAGER_SOLICITUD_{sid}_{datetime.now():%Y%m%d-%H%M}.csv"
+        _guardar_doc(nombre, contenido)
+        bitacora("archivo_manager", f"solicitud {sid} → {nombre}")
+        self._responder(contenido.encode("utf-8-sig"),
+                        "text/csv; charset=utf-8", descarga=nombre)
+
+    def _descargar_manager_proveedor(self, rut):
+        ficha = cargar_proveedores().get(rut)
+        if not ficha:
+            self._responder("No existe", codigo=404)
+            return
+        contenido = documento_manager_proveedor(ficha)
+        nombre = f"CARGA_MANAGER_PROVEEDOR_{rut}_{datetime.now():%Y%m%d-%H%M}.csv"
+        _guardar_doc(nombre, contenido)
+        bitacora("archivo_manager_proveedor", f"{rut} → {nombre}")
+        self._responder(contenido.encode("utf-8-sig"),
+                        "text/csv; charset=utf-8", descarga=nombre)
 
     # ------------------------------------------------------------ POST
 
@@ -667,12 +754,14 @@ class Portal(BaseHTTPRequestHandler):
                 self._post_decidir(campos)
             elif ruta == "/reevaluar":
                 self._post_reevaluar(campos)
-            elif ruta == "/proveedor":
-                self._post_proveedor(campos)
+            elif ruta == "/oc":
+                self._post_oc(campos)
+            elif ruta == "/verificar":
+                self._post_verificar(campos)
+            elif ruta == "/ficha":
+                self._post_ficha(campos)
             elif ruta == "/presupuesto":
                 self._post_presupuesto(campos)
-            elif ruta == "/txt":
-                self._post_txt(campos, archivos)
             else:
                 self._responder("No existe", codigo=404)
         except Exception as e:
@@ -722,10 +811,11 @@ class Portal(BaseHTTPRequestHandler):
         self._redirigir(f"/solicitud/{sid}")
 
     def _post_decidir(self, campos):
+        """Marca el resultado de la VERIFICACIÓN (no aprueba montos:
+        eso viene de Zoho)."""
         sid = campos.get("id", "")
         accion = campos.get("accion", "")
         operador = campos.get("operador", "")
-        config = cargar_config()
         sols = cargar_solicitudes()
         s = sols.get(sid)
         if not s or not operador:
@@ -733,33 +823,22 @@ class Portal(BaseHTTPRequestHandler):
             return
         ev = evaluar_solicitud(s["datos"], sols, cargar_presupuesto(), sid)
         s["evaluacion"] = ev
-        rol = rol_de(config, operador)
-        if accion == "aprobar":
+        if accion == "procesar":
             if ev["errores"]:
-                s["nota"] = "No se puede aprobar: la solicitud tiene errores."
-            elif rol not in ev["roles_autorizados"]:
-                s["nota"] = (f"{operador} no tiene autoridad para este caso "
-                             f"(tramo: {ev['tramo']}"
-                             + ("; requiere excepción AyF/GG"
-                                if ev["requiere_excepcion"] else "")
-                             + ("; sin saldo: solo Gerencia"
-                                if ev["sin_saldo"] else "") + ").")
+                s["nota"] = ("No se puede marcar procesada: el checklist "
+                             "tiene errores pendientes.")
             else:
-                excepcion = ev["requiere_excepcion"] or ev["sin_saldo"]
-                s["estado_portal"] = ("APROBADA-EXCEPCION" if excepcion
-                                      else "APROBADA")
+                s["estado_portal"] = "PROCESADA"
                 s["nota"] = ""
-                s["decisiones"].append(
-                    {"fecha": ahora(), "operador": operador,
-                     "decision": s["estado_portal"]})
-                bitacora("solicitud_aprobada",
-                         f"{sid} ({s['estado_portal']})", operador)
-        elif accion == "rechazar":
-            s["estado_portal"] = "RECHAZADA"
-            s["nota"] = ""
+                s["decisiones"].append({"fecha": ahora(), "operador": operador,
+                                        "decision": "PROCESADA"})
+                bitacora("solicitud_procesada", sid, operador)
+        elif accion == "observar":
+            s["estado_portal"] = "OBSERVADA"
+            s["nota"] = campos.get("nota", "")
             s["decisiones"].append({"fecha": ahora(), "operador": operador,
-                                    "decision": "RECHAZADA"})
-            bitacora("solicitud_rechazada", sid, operador)
+                                    "decision": "OBSERVADA"})
+            bitacora("solicitud_observada", sid, operador)
         elif accion == "eliminar":
             del sols[sid]
             guardar_solicitudes(sols)
@@ -769,17 +848,41 @@ class Portal(BaseHTTPRequestHandler):
         guardar_solicitudes(sols)
         self._redirigir(f"/solicitud/{sid}")
 
-    def _post_proveedor(self, campos):
+    def _post_oc(self, campos):
+        """Registra la OC emitida en Manager+ (Plantilla OC)."""
+        sid = campos.get("id", "")
+        sols = cargar_solicitudes()
+        s = sols.get(sid)
+        if not s:
+            self._redirigir("/")
+            return
+        neto = parse_monto(campos.get("neto"))
+        iva = round(neto * 0.19)
+        s["oc"] = {"numero": campos.get("numero", "").strip(),
+                   "fecha": campos.get("fecha", "").strip(),
+                   "neto": neto, "iva": iva, "total": neto + iva,
+                   "expediente": campos.get("expediente", "").strip(),
+                   "operador": campos.get("operador", ""),
+                   "registrada": ahora()}
+        guardar_solicitudes(sols)
+        bitacora("oc_registrada",
+                 f"solicitud {sid} → OC {s['oc']['numero']} "
+                 f"total {clp(s['oc']['total'])}", campos.get("operador", ""))
+        self._redirigir(f"/solicitud/{sid}")
+
+    def _post_verificar(self, campos):
+        """Paso 1 del alta: verificación SII. Deja el borrador de ficha
+        pre-llenado con los datos del SII."""
         if alta_proveedor is None:
-            self._responder(vista_proveedor(
-                {}, "El módulo sii-simpleapi no está junto al portal."))
+            self._responder(vista_proveedores(
+                "El módulo sii-simpleapi no está junto al portal."))
             return
         rut = normalizar_rut(campos.get("rut", ""))
         try:
             datos, origen = cliente_simpleapi.consultar_rut(
                 rut, mock=bool(campos.get("mock")))
         except RuntimeError as e:
-            self._responder(vista_proveedor({}, str(e)))
+            self._responder(vista_proveedores(str(e)))
             return
 
         class _Args:
@@ -787,31 +890,64 @@ class Portal(BaseHTTPRequestHandler):
             nombre_fantasia = campos.get("fantasia", "")
         estado, tipo, obs = alta_proveedor.evaluar(datos)
         campos_m = alta_proveedor.campos_manager(datos, _Args)
-        ruta = alta_proveedor.escribir_registro(datos, origen, estado, obs,
-                                                campos_m)
+        alta_proveedor.escribir_registro(datos, origen, estado, obs, campos_m)
         bitacora("verificacion_sii", f"{rut}: {estado} [{origen}]",
                  campos.get("operador", ""))
-        cuerpo = [f'<div class="tarjeta"><h2>{html.escape(datos.get("razonSocial", ""))} '
-                  f'({html.escape(datos.get("rut", ""))})</h2>'
-                  f'<p>Resultado: <span class="{ "ok" if estado == "APTO-SII" else "err"}">'
-                  f'{estado}</span> <small>[origen: {origen}]</small></p>']
-        for o in obs:
-            cuerpo.append(f'<div class="aviso">{html.escape(o)}</div>')
-        cuerpo.append("<h3>Campos para Manager+</h3><table>")
-        for nombre, valor in campos_m:
-            cuerpo.append(f"<tr><th>{html.escape(nombre)}</th>"
-                          f"<td>{html.escape(str(valor))}</td></tr>")
-        cuerpo.append("</table>"
-                      f"<p><small>Registro guardado: {html.escape(ruta.name)}"
-                      "</small></p></div>")
-        self._responder(vista_proveedor({}, extra="".join(cuerpo)))
+
+        fichas = cargar_proveedores()
+        ficha = fichas.get(rut, {})
+        actividades = datos.get("actividadesEconomicas") or []
+        dom = (datos.get("domicilios") or [{}])[0]
+        ficha.update({
+            "rut": rut,
+            "razon_social": datos.get("razonSocial", ficha.get("razon_social", "")),
+            "nombre_fantasia": campos.get("fantasia")
+            or ficha.get("nombre_fantasia") or datos.get("razonSocial", ""),
+            "giro": (actividades[0]["descripcion"] if actividades
+                     else ficha.get("giro", "")),
+            "correo": campos.get("correo") or ficha.get("correo", ""),
+            "correo_sii": datos.get("correoIntercambio")
+            or ficha.get("correo_sii", ""),
+            "direccion": dom.get("direccion") or ficha.get("direccion", ""),
+            "comuna": dom.get("comuna") or ficha.get("comuna", ""),
+            "ciudad": dom.get("ciudad") or ficha.get("ciudad", ""),
+            "pais": ficha.get("pais") or "Chile",
+            "plazo_pago": ficha.get("plazo_pago") or "30",
+            "moneda": ficha.get("moneda") or "CLP",
+            "tipo_proveedor": tipo,
+            "sii_resultado": estado, "sii_fecha": ahora(),
+            "actualizado": ahora(),
+        })
+        fichas[rut] = ficha
+        guardar_proveedores(fichas)
+        self._redirigir(f"/ficha?rut={rut}")
+
+    def _post_ficha(self, campos):
+        """Paso 2 del alta: guardar la ficha completa del proveedor."""
+        rut = normalizar_rut(campos.get("rut", ""))
+        if not rut:
+            self._redirigir("/proveedor")
+            return
+        fichas = cargar_proveedores()
+        ficha = fichas.get(rut, {"rut": rut})
+        for clave, *_ in CAMPOS_FICHA:
+            if clave in campos:
+                ficha[clave] = campos[clave].strip()
+        ficha["rut"] = rut
+        ficha["actualizado"] = ahora()
+        fichas[rut] = ficha
+        guardar_proveedores(fichas)
+        estado, _ = evaluar_ficha(ficha)
+        bitacora("ficha_proveedor",
+                 f"{rut} {ficha.get('razon_social', '')} → {estado}",
+                 campos.get("operador", ""))
+        self._redirigir(f"/ficha?rut={rut}")
 
     def _post_presupuesto(self, campos):
         pres = cargar_presupuesto()
         for clave, valor in campos.items():
             if clave.startswith("cc_"):
-                cc = clave[3:]
-                pres.setdefault(cc, {})["inicial"] = parse_monto(valor)
+                pres.setdefault(clave[3:], {})["inicial"] = parse_monto(valor)
         nuevo = campos.get("nuevo_cc", "").strip()
         if nuevo:
             pres.setdefault(nuevo, {})["inicial"] = \
@@ -820,45 +956,6 @@ class Portal(BaseHTTPRequestHandler):
         bitacora("presupuesto_actualizado", "saldos iniciales",
                  campos.get("operador", ""))
         self._redirigir("/presupuesto")
-
-    def _post_txt(self, campos, archivos):
-        if validador_txt_banco is None:
-            self._responder(vista_txt("El módulo validador-txt-banco no "
-                                      "está junto al portal."))
-            return
-        if "archivo" not in archivos:
-            self._responder(vista_txt("Selecciona el archivo TXT."))
-            return
-        nombre, contenido = archivos["archivo"]
-        DATOS.mkdir(exist_ok=True)
-        (DATOS / "txt").mkdir(exist_ok=True)
-        ruta = DATOS / "txt" / Path(nombre).name
-        ruta.write_bytes(contenido)
-        lineas, fin, cod = validador_txt_banco.leer_txt(ruta)
-        errores, avisos = validador_txt_banco.validar(lineas)
-        partes = [f"<h3>{html.escape(nombre)} — {len(lineas)} líneas</h3>"]
-        for e in errores:
-            partes.append(f'<div class="error">ERROR: {html.escape(e)}</div>')
-        for a in avisos:
-            partes.append(f'<div class="aviso">{html.escape(a)}</div>')
-        fecha = campos.get("fecha_pago", "").strip()
-        if fecha:
-            try:
-                nueva = validador_txt_banco.normalizar_fecha(fecha)
-                destino, vieja = validador_txt_banco.corregir_fecha(
-                    ruta, lineas, fin, cod, nueva)
-                partes.append(
-                    f'<div class="aviso ok">Fecha corregida {vieja} → '
-                    f'{nueva}. <a href="/descarga_txt/{destino.name}">'
-                    "Descargar TXT para el banco</a></div>")
-            except RuntimeError as e:
-                partes.append(f'<div class="error">{html.escape(str(e))}</div>')
-        veredicto = ("NO CARGAR AL BANCO: corregir en Manager+ y regenerar."
-                     if errores else "Sin errores.")
-        partes.append(f"<p><b>{veredicto}</b></p>")
-        bitacora("txt_validado", f"{nombre}: {len(errores)} errores",
-                 campos.get("operador", ""))
-        self._responder(vista_txt(extra="".join(partes)))
 
 
 # ---------------------------------------------------------------- vistas
@@ -871,16 +968,17 @@ def vista_tablero():
         s = sols[sid]
         d = s["datos"]
         ev = s.get("evaluacion", {})
+        oc = s.get("oc", {})
         filas.append(
             f'<tr><td><a href="/solicitud/{sid}">#{sid}</a></td>'
             f"<td>{html.escape(d.get('actividad', ''))}</td>"
             f"<td>{html.escape(d.get('centro_costo', ''))}</td>"
-            f"<td style='text-align:right'>${ev.get('monto', 0):,.0f}".replace(",", ".")
-            + "</td>"
+            f"<td style='text-align:right'>{clp(ev.get('monto', 0))}</td>"
             f"<td>{html.escape(d.get('razon_social', ''))}</td>"
+            f"<td>{html.escape(oc.get('numero', ''))}</td>"
             f"<td>{_chip(s.get('estado_portal', ''))}</td></tr>")
     tabla = ("<table><tr><th>#</th><th>Actividad</th><th>CC</th>"
-             "<th>Monto</th><th>Proveedor</th><th>Estado</th></tr>"
+             "<th>Monto</th><th>Proveedor</th><th>OC</th><th>Estado</th></tr>"
              + "".join(filas) + "</table>") if filas else \
         "<p>No hay solicitudes. Ingresa la primera en «Ingresar solicitud».</p>"
     return pagina("Solicitudes", f'<div class="tarjeta"><h2>Bandeja de '
@@ -892,7 +990,7 @@ def vista_nueva(mensaje=""):
     cuerpo = f"""{aviso}
 <div class="tarjeta"><h2>Opción A — Pegar el registro de Zoho</h2>
 <p><small>En Zoho abre el Formulario de Solicitud, selecciona todo el texto
-del registro (Cmd/Ctrl+A sobre la vista), cópialo y pégalo aquí.</small></p>
+del registro, cópialo y pégalo aquí.</small></p>
 <form method="post" action="/nueva">
 <textarea name="pegado" rows="12" placeholder="Nombre de actividad : …&#10;Centro de costo : …"></textarea>
 <p><button>Ingresar solicitud</button></p></form></div>
@@ -931,30 +1029,56 @@ def vista_solicitud(sid):
     decisiones = "".join(
         f"<li>{html.escape(x['fecha'])} — {html.escape(x['decision'])} por "
         f"{html.escape(x['operador'])}</li>" for x in s.get("decisiones", []))
+    rut = d.get("rut_normalizado") or normalizar_rut(d.get("rut_proveedor", ""))
+    link_ficha = (f' <a href="/ficha?rut={rut}">ver/completar ficha del '
+                  'proveedor</a>' if rut else "")
     acciones = f"""
 <form method="post" action="/decidir" class="inline">
 <input type="hidden" name="id" value="{sid}">
 {_selector_operador(config)}
-<button name="accion" value="aprobar">Aprobar</button>
-<button name="accion" value="rechazar" class="peligro">Rechazar</button>
-<button name="accion" value="eliminar" class="sec"
+<button name="accion" value="procesar">Marcar procesada</button>
+<button name="accion" value="observar" class="sec">Observar</button>
+<input name="nota" placeholder="nota (al observar)" style="width:12em">
+<button name="accion" value="eliminar" class="peligro"
  onclick="return confirm('¿Eliminar la solicitud #{sid}?')">Eliminar</button>
 </form>
 <form method="post" action="/reevaluar" class="inline">
 <input type="hidden" name="id" value="{sid}">
 <button class="sec">Re-evaluar checklist</button></form>"""
+    oc = s.get("oc", {})
+    form_oc = f"""<div class="tarjeta"><h3>Registro de OC (Manager+)</h3>
+{f"<p>OC <b>{html.escape(oc.get('numero', ''))}</b> del "
+ f"{html.escape(oc.get('fecha', ''))} — neto {clp(oc.get('neto', 0))} · "
+ f"IVA {clp(oc.get('iva', 0))} · <b>total {clp(oc.get('total', 0))}</b> · "
+ f"expediente: {html.escape(oc.get('expediente', '') or '—')} "
+ f"<small>(registrada por {html.escape(oc.get('operador', ''))}, "
+ f"{html.escape(oc.get('registrada', ''))})</small></p>" if oc else
+ "<p><small>Cuando la OC se emita en Manager+, registra aquí su número "
+ "(Plantilla OC): queda vinculada a la solicitud y entra al archivo de "
+ "carga.</small></p>"}
+<form method="post" action="/oc">
+<input type="hidden" name="id" value="{sid}">
+<p>N° OC: <input name="numero" value="{html.escape(oc.get('numero', ''))}" style="width:8em" required>
+Fecha emisión: <input name="fecha" value="{html.escape(oc.get('fecha', ''))}" placeholder="DD-MM-AAAA" style="width:8em">
+Neto: <input name="neto" value="{oc.get('neto', '')}" style="width:8em">
+<small>(IVA 19% y total se calculan solos)</small></p>
+<p>Expediente SharePoint: <input name="expediente"
+ value="{html.escape(oc.get('expediente', ''))}" style="width:22em"></p>
+<p>{_selector_operador(config)} <button>{'Actualizar' if oc else 'Registrar'} OC</button></p>
+</form></div>"""
     descargar = (f'<p><a href="/manager/{sid}.csv"><button>Descargar archivo '
                  'de carga Manager+</button></a></p>'
-                 if s.get("estado_portal", "").startswith("APROBADA") else "")
-    monto_txt = "$" + format(ev.get("monto", 0), ",.0f").replace(",", ".")
+                 if s.get("estado_portal") in ("LISTA", "PROCESADA") else "")
     cuerpo = f"""<div class="tarjeta">
 <h2>Solicitud #{sid} {_chip(s.get('estado_portal', ''))}</h2>
-<p><b>Tramo:</b> {html.escape(ev.get('tramo', ''))} ·
-<b>Monto:</b> {monto_txt}</p>
+<p><b>Monto:</b> {clp(ev.get('monto', 0))} ·
+<b>Estado en Zoho:</b> {html.escape(d.get('estado_zoho', 'sin dato'))}
+<small>(la aprobación se hace en Zoho)</small>{link_ficha}</p>
 {''.join(checks)}{nota}
 <p>{acciones}</p>{descargar}
-{f"<h3>Decisiones</h3><ul>{decisiones}</ul>" if decisiones else ""}
+{f"<h3>Historial</h3><ul>{decisiones}</ul>" if decisiones else ""}
 </div>
+{form_oc}
 <div class="tarjeta"><h3>Datos de la solicitud (Zoho)</h3>
 <table>{filas}</table>
 <p><small>Ingresada al portal: {html.escape(s.get('ingresada', ''))}.
@@ -962,7 +1086,7 @@ Los adjuntos (cotizaciones, ficha) siguen en Zoho.</small></p></div>"""
     return pagina(f"Solicitud {sid}", cuerpo, "/")
 
 
-def vista_proveedor(q=None, mensaje="", extra=""):
+def vista_proveedores(mensaje=""):
     config = cargar_config()
     aviso = f'<div class="error">{html.escape(mensaje)}</div>' if mensaje else ""
     estado_cuota = ""
@@ -976,20 +1100,82 @@ def vista_proveedor(q=None, mensaje="", extra=""):
                             "</small></p>")
         except Exception:
             pass
-    cuerpo = f"""{aviso}{extra}
-<div class="tarjeta"><h2>Verificar / dar de alta proveedor (SII)</h2>
-{estado_cuota}
-<form method="post" action="/proveedor">
+    fichas = cargar_proveedores()
+    filas = []
+    for rut in sorted(fichas):
+        f = fichas[rut]
+        estado, _ = evaluar_ficha(f)
+        filas.append(f'<tr><td><a href="/ficha?rut={rut}">{rut}</a></td>'
+                     f"<td>{html.escape(f.get('razon_social', ''))}</td>"
+                     f"<td>{_chip(estado)}</td>"
+                     f"<td>{html.escape(f.get('actualizado', ''))}</td>"
+                     f'<td><a href="/manager_proveedor/{rut}.csv">carga '
+                     "Manager+</a></td></tr>")
+    lista = ("<h3>Fichas guardadas</h3><table><tr><th>RUT</th><th>Razón "
+             "social</th><th>Estado</th><th>Actualizada</th><th>Documento"
+             "</th></tr>" + "".join(filas) + "</table>") if filas else \
+        "<p><small>Aún no hay fichas guardadas.</small></p>"
+    cuerpo = f"""{aviso}
+<div class="tarjeta"><h2>Paso 1 — Verificar en el SII</h2>{estado_cuota}
+<form method="post" action="/verificar">
 <p>RUT: <input name="rut" required placeholder="76123456-7">
 Correo comercial: <input name="correo" type="email" placeholder="ventas@…">
 Nombre fantasía: <input name="fantasia" placeholder="(opcional)"></p>
 <p>{_selector_operador(config)}
 <label><input type="checkbox" name="mock" value="1"> prueba (sin gastar
 cuota)</label>
-<button>Verificar en el SII</button></p></form>
-<p><small>APTO-SII habilita al proveedor para OC y nómina. El registro
-fechado queda en la bitácora de verificaciones.</small></p></div>"""
+<button>Verificar y abrir ficha</button></p></form>
+<p><small>La verificación queda registrada y abre la ficha pre-llenada
+con los datos del SII (razón social, giro, dirección, correo SII).</small></p>
+</div>
+<div class="tarjeta">{lista}</div>"""
     return pagina("Proveedores", cuerpo, "/proveedor")
+
+
+def vista_ficha(rut):
+    rut = normalizar_rut(rut)
+    fichas = cargar_proveedores()
+    ficha = fichas.get(rut)
+    if not ficha:
+        return pagina("Ficha", '<div class="error">Primero verifica el RUT '
+                      'en la pestaña Proveedores.</div>', "/proveedor")
+    config = cargar_config()
+    estado, faltantes = evaluar_ficha(ficha)
+    falta_html = "".join(f'<div class="error">Falta: {html.escape(x)}</div>'
+                         for x in faltantes)
+    secciones, seccion_actual = [], None
+    for clave, etiqueta, seccion, bloqueante in CAMPOS_FICHA:
+        if seccion != seccion_actual:
+            if seccion_actual is not None:
+                secciones.append("</div>")
+            secciones.append(f"<h3>{html.escape(seccion)}</h3>"
+                             '<div class="grilla">')
+            seccion_actual = seccion
+        marca = " *" if bloqueante else ""
+        secciones.append(
+            f"<label>{html.escape(etiqueta)}{marca}"
+            f'<input name="{clave}" '
+            f'value="{html.escape(str(ficha.get(clave, "")))}"></label>')
+    secciones.append("</div>")
+    cuerpo = f"""<div class="tarjeta">
+<h2>Ficha de proveedor {html.escape(rut)} {_chip(estado)}</h2>
+<p>{html.escape(ficha.get('razon_social', ''))} ·
+Verificación SII: <b>{html.escape(ficha.get('sii_resultado', 'sin verificar'))}</b>
+<small>({html.escape(ficha.get('sii_fecha', ''))})</small> ·
+Correo SII: {html.escape(ficha.get('correo_sii', '') or '—')}</p>
+{falta_html}
+<p><small>* campos bloqueantes (checklist v2.0): sin ellos el proveedor no
+queda APTO ni debe entrar a una OC. Los datos bancarios se copian del
+formulario/ficha que envió el proveedor.</small></p>
+<form method="post" action="/ficha">
+<input type="hidden" name="rut" value="{html.escape(rut)}">
+{''.join(secciones)}
+<p style="margin-top:1em">{_selector_operador(config)}
+<button>Guardar ficha</button>
+<a href="/manager_proveedor/{rut}.csv"><button type="button" class="sec">
+Documento de carga Manager+</button></a></p>
+</form></div>"""
+    return pagina(f"Ficha {rut}", cuerpo, "/proveedor")
 
 
 def vista_presupuesto():
@@ -1006,12 +1192,11 @@ def vista_presupuesto():
             f"<tr><th>{html.escape(cc)}</th>"
             f'<td><input name="cc_{html.escape(cc)}" value="{inicial}" '
             'style="width:8em;text-align:right"></td>'
-            f"<td style='text-align:right'>${comp:,.0f}</td>"
-            f"<td style='text-align:right' class='{clase}'>${saldo:,.0f}</td></tr>"
-            .replace(",", "."))
+            f"<td style='text-align:right'>{clp(comp)}</td>"
+            f"<td style='text-align:right' class='{clase}'>{clp(saldo)}</td></tr>")
     cuerpo = f"""<div class="tarjeta"><h2>Presupuesto por centro de costo</h2>
 <p><small>Saldo inicial en CLP (0 = sin control para ese CC). El
-comprometido se calcula solo, con las solicitudes aprobadas en el
+comprometido se calcula solo, con las solicitudes PROCESADAS en el
 portal.</small></p>
 <form method="post" action="/presupuesto">
 <table><tr><th>Centro de costo</th><th>Saldo inicial</th>
@@ -1021,21 +1206,6 @@ monto <input name="nuevo_monto" style="width:8em"></p>
 <p>{_selector_operador(config)} <button>Guardar presupuesto</button></p>
 </form></div>"""
     return pagina("Presupuesto", cuerpo, "/presupuesto")
-
-
-def vista_txt(mensaje="", extra=""):
-    config = cargar_config()
-    aviso = f'<div class="error">{html.escape(mensaje)}</div>' if mensaje else ""
-    cuerpo = f"""{aviso}{extra}
-<div class="tarjeta"><h2>Validar TXT de nómina (Banco de Chile)</h2>
-<form method="post" action="/txt" enctype="multipart/form-data">
-<p><input type="file" name="archivo" accept=".txt" required></p>
-<p>Fecha de abono (opcional, corrige el encabezado):
-<input name="fecha_pago" placeholder="DD-MM-AAAA" style="width:9em"></p>
-<p>{_selector_operador(config)} <button>Validar</button></p></form>
-<p><small>Si hay ERRORES, no cargar al banco: corregir en Manager+ y
-regenerar el TXT.</small></p></div>"""
-    return pagina("TXT banco", cuerpo, "/txt")
 
 
 def vista_bitacora():
@@ -1053,22 +1223,10 @@ def vista_bitacora():
 # ---------------------------------------------------------------- arranque
 
 
-def ip_local():
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except OSError:
-        return "127.0.0.1"
-
-
 def cargar_clave_simpleapi():
     """El doble clic no hereda las variables del shell: si no está
     SIMPLEAPI_API_KEY, la lee de clave_simpleapi.txt junto al portal
     (archivo local del equipo anfitrión; excluido del repositorio)."""
-    import os
     if os.environ.get("SIMPLEAPI_API_KEY"):
         return True
     archivo = BASE / "clave_simpleapi.txt"
@@ -1078,6 +1236,17 @@ def cargar_clave_simpleapi():
             os.environ["SIMPLEAPI_API_KEY"] = clave
             return True
     return False
+
+
+def ip_local():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except OSError:
+        return "127.0.0.1"
 
 
 def main(argv=None):

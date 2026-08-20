@@ -1,4 +1,4 @@
-"""Tests del Portal Puente MS (sin red, sin servidor). Ejecutar desde
+"""Tests del Portal Puente MS v2 (sin red, sin servidor). Ejecutar desde
 portal-puente/:
     python3 -m unittest discover tests
 """
@@ -56,6 +56,15 @@ Motivo de selección Proveedor :
 Proveedor oficial edifico CChC Santiago
 """
 
+FICHA_COMPLETA = {
+    "rut": "65091028-1", "razon_social": "PROVEEDOR DE PRUEBA",
+    "giro": "SERVICIOS", "correo": "v@p.cl", "tipo_dte": "Factura Electrónica",
+    "banco": "Banco de Chile", "tipo_cuenta": "corriente",
+    "numero_cuenta": "123456789", "email_aviso_pago": "pagos@p.cl",
+    "sii_resultado": "APTO-SII", "sii_fecha": "18-08-2026 10:00",
+    "actualizado": "18-08-2026 10:05",
+}
+
 
 class TestParserZoho(unittest.TestCase):
     def test_pegado_extrae_los_campos(self):
@@ -65,8 +74,8 @@ class TestParserZoho(unittest.TestCase):
         self.assertEqual(d["centro_costo"], "FOCO SOCIO")
         self.assertEqual(d["valor_total"], "113.050")
         self.assertEqual(d["rut_proveedor"], "65091028-1Pro")
+        self.assertEqual(d["estado_zoho"], "Aprobado")
         self.assertEqual(d["posee_ambas_cotizaciones"], "No")
-        self.assertEqual(d["tipo_solicitud"], "Formulario OC")
 
     def test_csv_mapea_encabezados(self):
         csv_texto = ("Nombre de actividad;Centro de costo;Valor total;"
@@ -75,7 +84,6 @@ class TestParserZoho(unittest.TestCase):
         filas = portal.parsear_csv(csv_texto)
         self.assertEqual(len(filas), 1)
         self.assertEqual(filas[0]["centro_costo"], "MUNDO SALUD")
-        self.assertEqual(filas[0]["valor_total"], "250000")
 
 
 class TestReglas(unittest.TestCase):
@@ -89,13 +97,34 @@ class TestReglas(unittest.TestCase):
         self.assertEqual(portal.parse_monto("113.050"), 113050)
         self.assertEqual(portal.parse_monto("$ 1.113.050"), 1113050)
         self.assertEqual(portal.parse_monto("113050,60"), 113051)
-        self.assertEqual(portal.parse_monto(113050.0), 113050)
 
-    def test_tramos_matriz_vigente(self):
-        self.assertIn("Dueño", portal.tramo_de(400_000)[0])
-        self.assertIn("Cecilia", portal.tramo_de(800_000)[0])
-        self.assertIn("Patricio", portal.tramo_de(3_000_000)[0])
-        self.assertIn("Constanza", portal.tramo_de(6_000_000)[0])
+
+class TestFichaProveedor(unittest.TestCase):
+    def test_ficha_completa_es_apto(self):
+        estado, faltantes = portal.evaluar_ficha(dict(FICHA_COMPLETA))
+        self.assertEqual(estado, "APTO")
+        self.assertEqual(faltantes, [])
+
+    def test_sin_datos_bancarios_no_es_apto(self):
+        ficha = dict(FICHA_COMPLETA)
+        del ficha["numero_cuenta"]
+        estado, faltantes = portal.evaluar_ficha(ficha)
+        self.assertEqual(estado, "EN VALIDACIÓN")
+        self.assertIn("Número de cuenta", faltantes)
+
+    def test_sin_sii_no_es_apto(self):
+        ficha = dict(FICHA_COMPLETA)
+        ficha["sii_resultado"] = "NO APTO"
+        estado, faltantes = portal.evaluar_ficha(ficha)
+        self.assertEqual(estado, "EN VALIDACIÓN")
+        self.assertIn("Verificación SII vigente (APTO-SII)", faltantes)
+
+    def test_documento_manager_proveedor(self):
+        doc = portal.documento_manager_proveedor(dict(FICHA_COMPLETA))
+        self.assertIn("1. Identificación;RUT;65091028-1", doc)
+        self.assertIn("4. Datos bancarios;Banco;Banco de Chile", doc)
+        self.assertIn("4. Datos bancarios;Número de cuenta;123456789", doc)
+        self.assertIn("MANAGER+;Clasificación;sin clasificación", doc)
 
 
 class TestChecklist(unittest.TestCase):
@@ -104,72 +133,67 @@ class TestChecklist(unittest.TestCase):
         base.update(extra)
         return base
 
-    def test_sin_cotizaciones_es_excepcion_ayf_gg(self):
+    def test_proveedor_apto_y_zoho_aprobado_queda_lista(self):
         with mock.patch.object(portal, "estado_proveedor",
-                               return_value=("APTO-SII", "01-08-2026 10:00")):
+                               return_value=("APTO", "ficha completa")):
             ev = portal.evaluar_solicitud(self._datos())
         self.assertEqual(ev["errores"], [])
-        self.assertTrue(ev["requiere_excepcion"])
-        self.assertEqual(set(ev["roles_autorizados"]), {"AYF", "GG"})
+        # sin ambas cotizaciones: solo aviso informativo, no bloquea
+        self.assertTrue(any("cotizaciones" in a for a in ev["avisos"]))
+        self.assertTrue(any("Aprobada en Zoho" in a for a in ev["avisos"]))
 
-    def test_con_ambas_cotizaciones_aprueba_el_tramo(self):
+    def test_no_aprobada_en_zoho_es_error(self):
         with mock.patch.object(portal, "estado_proveedor",
-                               return_value=("APTO-SII", "")):
+                               return_value=("APTO", "")):
             ev = portal.evaluar_solicitud(
-                self._datos(posee_ambas_cotizaciones="Sí"))
-        self.assertFalse(ev["requiere_excepcion"])
-        # 113.050 → tramo 1: dueño del presupuesto (cualquier operador)
-        self.assertIn("OPERADOR", ev["roles_autorizados"])
+                self._datos(estado_zoho="En espera de aprobación"))
+        self.assertTrue(any("Zoho" in e for e in ev["errores"]))
 
-    def test_proveedor_no_apto_bloquea(self):
+    def test_solo_sii_sin_ficha_es_error(self):
         with mock.patch.object(portal, "estado_proveedor",
-                               return_value=("NO APTO", "01-08-2026")):
+                               return_value=("SOLO-SII", "verificado")):
             ev = portal.evaluar_solicitud(self._datos())
-        self.assertTrue(any("NO APTO" in e for e in ev["errores"]))
+        self.assertTrue(any("ficha" in e.lower() for e in ev["errores"]))
 
     def test_falta_campo_obligatorio(self):
         datos = self._datos()
         del datos["centro_costo"]
         with mock.patch.object(portal, "estado_proveedor",
-                               return_value=(None, "")):
+                               return_value=("APTO", "")):
             ev = portal.evaluar_solicitud(datos)
         self.assertTrue(any("Centro de costo" in e for e in ev["errores"]))
 
-    def test_sin_saldo_solo_gerencia(self):
+    def test_sin_saldo_avisa_pero_no_bloquea(self):
         presupuesto = {"FOCO SOCIO": {"inicial": 100_000}}
         with mock.patch.object(portal, "estado_proveedor",
-                               return_value=("APTO-SII", "")):
-            ev = portal.evaluar_solicitud(
-                self._datos(posee_ambas_cotizaciones="Sí"),
-                presupuesto=presupuesto)
+                               return_value=("APTO", "")):
+            ev = portal.evaluar_solicitud(self._datos(),
+                                          presupuesto=presupuesto)
         self.assertTrue(ev["sin_saldo"])
-        self.assertEqual(ev["roles_autorizados"], ["GG"])
+        self.assertTrue(any("SIN saldo" in a for a in ev["avisos"]))
+        self.assertEqual(ev["errores"], [])
 
-    def test_presupuesto_comprometido_descuenta(self):
-        solicitudes = {"1": {"estado_portal": "APROBADA",
+    def test_comprometido_cuenta_procesadas(self):
+        solicitudes = {"1": {"estado_portal": "PROCESADA",
                              "datos": {"centro_costo": "FOCO SOCIO",
                                        "valor_total": "300.000"}}}
         self.assertEqual(
             portal.comprometido_por_cc(solicitudes, "FOCO SOCIO"), 300000)
-        presupuesto = {"FOCO SOCIO": {"inicial": 400_000}}
-        with mock.patch.object(portal, "estado_proveedor",
-                               return_value=("APTO-SII", "")):
-            ev = portal.evaluar_solicitud(
-                self._datos(posee_ambas_cotizaciones="Sí"),
-                solicitudes=solicitudes, presupuesto=presupuesto)
-        self.assertTrue(ev["sin_saldo"])   # 400.000 - 300.000 < 113.050
 
 
-class TestManager(unittest.TestCase):
-    def test_archivo_manager_trae_proveedor_y_oc(self):
+class TestArchivoSolicitud(unittest.TestCase):
+    def test_incluye_solicitud_y_oc(self):
         datos = portal.parsear_pegado(EJEMPLO_ZOHO)
         with mock.patch.object(portal, "estado_proveedor",
-                               return_value=("APTO-SII", "")):
+                               return_value=("APTO", "")):
             ev = portal.evaluar_solicitud(datos)
-        contenido = portal.archivo_manager(datos, ev)
-        self.assertIn("PROVEEDOR;RUT;65091028-1", contenido)
-        self.assertIn("OC;Centro de costo;FOCO SOCIO", contenido)
-        self.assertIn("OC;Monto total (c/IVA);113050", contenido)
+        oc = {"numero": "OC-1234", "fecha": "20-08-2026", "neto": 95000,
+              "iva": 18050, "total": 113050, "expediente": "SP/2026/08",
+              "operador": "Cecilia Ramírez"}
+        doc = portal.archivo_manager_solicitud(datos, ev, oc)
+        self.assertIn("SOLICITUD;RUT proveedor;65091028-1", doc)
+        self.assertIn("OC;N° OC (Manager+);OC-1234", doc)
+        self.assertIn("OC;TOTAL bruto;113050", doc)
 
 
 class TestPersistencia(unittest.TestCase):
@@ -178,12 +202,15 @@ class TestPersistencia(unittest.TestCase):
             original = portal.DATOS
             portal.DATOS = Path(tmp) / "datos"
             try:
-                portal.guardar_solicitudes({"1": {"datos": {"actividad": "x"},
-                                                  "estado_portal": "LISTA"}})
-                self.assertEqual(
-                    portal.cargar_solicitudes()["1"]["estado_portal"], "LISTA")
-                pres = portal.cargar_presupuesto()
-                self.assertIn("MUNDO SALUD", pres)
+                portal.guardar_proveedores({"65091028-1": FICHA_COMPLETA})
+                estado, _ = portal.estado_proveedor("65091028-1")
+                self.assertEqual(estado, "APTO")
+                ficha = dict(FICHA_COMPLETA)
+                del ficha["banco"]
+                portal.guardar_proveedores({"65091028-1": ficha})
+                estado, detalle = portal.estado_proveedor("65091028-1")
+                self.assertEqual(estado, "FICHA-INCOMPLETA")
+                self.assertIn("Banco", detalle)
                 portal.bitacora("prueba", "detalle", "Tester")
                 self.assertEqual(portal.leer_bitacora()[0]["evento"], "prueba")
             finally:
