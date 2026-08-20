@@ -1064,12 +1064,33 @@ def ip_local():
         return "127.0.0.1"
 
 
+def cargar_clave_simpleapi():
+    """El doble clic no hereda las variables del shell: si no está
+    SIMPLEAPI_API_KEY, la lee de clave_simpleapi.txt junto al portal
+    (archivo local del equipo anfitrión; excluido del repositorio)."""
+    import os
+    if os.environ.get("SIMPLEAPI_API_KEY"):
+        return True
+    archivo = BASE / "clave_simpleapi.txt"
+    if archivo.exists():
+        clave = archivo.read_text(encoding="utf-8").strip()
+        if clave:
+            os.environ["SIMPLEAPI_API_KEY"] = clave
+            return True
+    return False
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Portal Puente MS")
     ap.add_argument("--puerto", type=int, default=8765)
     ap.add_argument("--sin-navegador", action="store_true")
     args = ap.parse_args(argv)
     cargar_config()                      # crea config.json la primera vez
+    if not cargar_clave_simpleapi():
+        print("AVISO: falta la clave de SimpleAPI. Crear el archivo "
+              "clave_simpleapi.txt (junto a portal.py) con la clave "
+              "adentro, o exportar SIMPLEAPI_API_KEY. Sin ella, la "
+              "verificación SII solo funciona en modo prueba.")
     servidor = ThreadingHTTPServer(("0.0.0.0", args.puerto), Portal)
     print("=" * 56)
     print("  Portal Puente MS — en marcha")
