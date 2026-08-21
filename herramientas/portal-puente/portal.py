@@ -358,6 +358,172 @@ def parsear_csv(contenido):
     return filas
 
 
+# ---------------------------------------------------------------- ficha desde archivo
+
+# Estructura de la Ficha de Proveedor oficial
+# (Ficha_Proveedor_MundoSocios_CChC_2026.xlsx): etiquetas por sección;
+# el valor está en la celda/texto siguiente.
+MAPA_FICHA_ARCHIVO = {
+    "DATOS TRIBUTARIOS": {
+        "RUT": "rut", "RAZON SOCIAL": "razon_social",
+        "NOMBRE DE FANTASIA": "nombre_fantasia", "GIRO": "giro",
+        "CORREO": "correo", "DIRECCION": "direccion", "COMUNA": "comuna",
+        "CIUDAD": "ciudad", "REGION": "region", "PAIS": "pais",
+        "TELEFONO": "telefono"},
+    "REPRESENTANTE LEGAL 1": {
+        "NOMBRE COMPLETO": "rep1_nombre", "RUT": "rep1_rut",
+        "CORREO": "rep1_correo", "TELEFONO": "rep1_telefono"},
+    "REPRESENTANTE LEGAL 2": {
+        "NOMBRE COMPLETO": "rep2_nombre", "RUT": "rep2_rut"},
+    "CONTACTO COMERCIAL": {
+        "NOMBRE COMPLETO": "contacto_nombre", "CARGO": "contacto_cargo",
+        "CORREO": "contacto_correo", "TELEFONO": "contacto_telefono"},
+    "TIPO DE DOCUMENTO": {"DTE": "tipo_dte"},
+    "DATOS BANCARIOS": {
+        "BANCO": "banco", "CUENTA": "tipo_cuenta",
+        "TIPO DE CUENTA": "tipo_cuenta", "NRO": "numero_cuenta"},
+}
+# Toda etiqueta conocida (de cualquier sección): nunca es un valor.
+_ETIQUETAS_FICHA = {e for m in MAPA_FICHA_ARCHIVO.values() for e in m}
+
+
+def _etiqueta(texto):
+    return _sin_tildes(str(texto or "")).upper().strip().rstrip(":").strip()
+
+
+def _seccion_de(texto):
+    plano = _etiqueta(texto)
+    for seccion in MAPA_FICHA_ARCHIVO:
+        if plano.startswith(seccion):
+            return seccion
+    return None
+
+
+def _leer_celdas_xlsx(binario):
+    """Lector .xlsx mínimo (librería estándar): devuelve las filas de la
+    hoja de la ficha como listas de valores en orden de columna."""
+    import xml.etree.ElementTree as ET
+    import zipfile
+    NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    with zipfile.ZipFile(io.BytesIO(binario)) as z:
+        compartidos = []
+        if "xl/sharedStrings.xml" in z.namelist():
+            raiz = ET.fromstring(z.read("xl/sharedStrings.xml"))
+            for si in raiz.iter(f"{NS}si"):
+                compartidos.append("".join(t.text or ""
+                                           for t in si.iter(f"{NS}t")))
+        hojas = sorted(n for n in z.namelist()
+                       if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", n))
+        mejor = None
+        for nombre in hojas:
+            raiz = ET.fromstring(z.read(nombre))
+            filas = {}
+            for c in raiz.iter(f"{NS}c"):
+                ref = c.get("r", "")
+                m = re.match(r"([A-Z]+)(\d+)", ref)
+                if not m:
+                    continue
+                col = sum((ord(l) - 64) * 26 ** i
+                          for i, l in enumerate(reversed(m.group(1))))
+                tipo = c.get("t", "")
+                if tipo == "s":
+                    v = c.find(f"{NS}v")
+                    valor = (compartidos[int(v.text)]
+                             if v is not None and v.text else "")
+                elif tipo == "inlineStr":
+                    valor = "".join(t.text or "" for t in c.iter(f"{NS}t"))
+                else:
+                    v = c.find(f"{NS}v")
+                    valor = v.text if v is not None and v.text else ""
+                if str(valor).strip():
+                    filas.setdefault(int(m.group(2)), []).append(
+                        (col, str(valor).strip()))
+            listado = [[v for _, v in sorted(filas[n])] for n in sorted(filas)]
+            texto = " ".join(v for fila in listado for v in fila).upper()
+            if "FICHA PROVEEDOR" in _sin_tildes(texto):
+                return listado
+            if mejor is None and listado:
+                mejor = listado
+        return mejor or []
+
+
+def _texto_pdf(binario):
+    """Extracción de texto best-effort de un PDF de texto (como el que
+    sale de imprimir/exportar la ficha Excel a PDF)."""
+    import zlib
+    piezas = []
+    for m in re.finditer(rb"stream\r?\n(.*?)\r?\nendstream", binario, re.S):
+        datos = m.group(1)
+        try:
+            datos = zlib.decompress(datos)
+        except Exception:
+            pass
+        if b"BT" not in datos:
+            continue
+        for t in re.finditer(rb"\((?:\\.|[^\\()])*\)", datos):
+            crudo = t.group(0)[1:-1]
+            crudo = re.sub(rb"\\([0-7]{1,3})",
+                           lambda x: bytes([int(x.group(1), 8) & 0xFF]),
+                           crudo)
+            crudo = (crudo.replace(rb"\(", b"(").replace(rb"\)", b")")
+                     .replace(rb"\\", b"\\"))
+            texto = crudo.decode("latin-1", "replace").strip()
+            if texto:
+                piezas.append(texto)
+    return piezas
+
+
+def _parsear_items_ficha(items):
+    """Recorre una secuencia de textos (celdas o líneas del PDF) y arma
+    el dict de la ficha por sección → etiqueta → valor siguiente."""
+    datos = {}
+    seccion = None
+    i = 0
+    while i < len(items):
+        texto = items[i]
+        s = _seccion_de(texto)
+        if s:
+            seccion = s
+            i += 1
+            continue
+        if seccion:
+            etiquetas = MAPA_FICHA_ARCHIVO[seccion]
+            clave = etiquetas.get(_etiqueta(texto))
+            if clave and i + 1 < len(items):
+                siguiente = items[i + 1]
+                if not _seccion_de(siguiente) \
+                        and _etiqueta(siguiente) not in _ETIQUETAS_FICHA:
+                    if clave not in datos:
+                        datos[clave] = str(siguiente).strip()
+                    i += 2
+                    continue
+        i += 1
+    return datos
+
+
+def parsear_ficha_archivo(nombre, binario):
+    """Carga la Ficha de Proveedor desde .xlsx o .pdf → dict de campos.
+    Lanza RuntimeError con mensaje claro si no se puede leer."""
+    extension = Path(nombre).suffix.lower()
+    if extension == ".xlsx":
+        filas = _leer_celdas_xlsx(binario)
+        items = [v for fila in filas for v in fila]
+    elif extension == ".pdf":
+        items = _texto_pdf(binario)
+        if not items:
+            raise RuntimeError(
+                "No se pudo extraer texto del PDF (¿es un escaneo?). "
+                "Usar la ficha en Excel, o un PDF exportado desde Excel.")
+    else:
+        raise RuntimeError("Formato no soportado: usar .xlsx o .pdf")
+    datos = _parsear_items_ficha(items)
+    if not datos.get("rut"):
+        raise RuntimeError(
+            "El archivo no trae el RUT del proveedor (¿es la Ficha de "
+            "Proveedor MundoSocios?). Revisar el archivo o digitar a mano.")
+    return datos
+
+
 # ---------------------------------------------------------------- proveedores
 
 
@@ -890,6 +1056,8 @@ class Portal(BaseHTTPRequestHandler):
                 self._post_oc(campos)
             elif ruta == "/verificar":
                 self._post_verificar(campos)
+            elif ruta == "/cargar_ficha":
+                self._post_cargar_ficha(campos, archivos)
             elif ruta == "/ficha":
                 self._post_ficha(campos)
             elif ruta == "/presupuesto":
@@ -1052,6 +1220,44 @@ class Portal(BaseHTTPRequestHandler):
         })
         fichas[rut] = ficha
         guardar_proveedores(fichas)
+        self._redirigir(f"/ficha?rut={rut}")
+
+    def _post_cargar_ficha(self, campos, archivos):
+        """Carga la Ficha de Proveedor desde el archivo Excel o PDF que
+        envió el proveedor y abre la ficha del portal para revisar."""
+        if "archivo" not in archivos:
+            self._responder(vista_proveedores("Selecciona el archivo de la "
+                                              "ficha (.xlsx o .pdf)."))
+            return
+        nombre, binario = archivos["archivo"]
+        try:
+            datos = parsear_ficha_archivo(nombre, binario)
+        except RuntimeError as e:
+            self._responder(vista_proveedores(str(e)))
+            return
+        rut = normalizar_rut(datos.get("rut", ""))
+        if not rut or not rut_valido(rut):
+            self._responder(vista_proveedores(
+                f"El RUT de la ficha no es válido: {datos.get('rut', '')}"))
+            return
+        fichas = cargar_proveedores()
+        ficha = fichas.get(rut, {})
+        for clave, valor in datos.items():
+            if str(valor).strip():
+                ficha[clave] = str(valor).strip()
+        ficha["rut"] = rut
+        if not ficha.get("email_aviso_pago") and ficha.get("correo"):
+            ficha["email_aviso_pago"] = ficha["correo"]
+        ficha.setdefault("plazo_pago", "30")
+        ficha.setdefault("moneda", "CLP")
+        ficha["actualizado"] = ahora()
+        ficha["origen_archivo"] = nombre
+        fichas[rut] = ficha
+        guardar_proveedores(fichas)
+        campos_leidos = sum(1 for v in datos.values() if str(v).strip())
+        bitacora("ficha_cargada_archivo",
+                 f"{rut} ← {nombre} ({campos_leidos} campos)",
+                 campos.get("operador", ""))
         self._redirigir(f"/ficha?rut={rut}")
 
     def _post_ficha(self, campos):
@@ -1260,6 +1466,14 @@ cuota)</label>
 <p><small>La verificación queda registrada y abre la ficha pre-llenada
 con los datos del SII (razón social, giro, dirección, correo SII).</small></p>
 </div>
+<div class="tarjeta"><h2>Paso 2 — Cargar la Ficha de Proveedor (archivo)</h2>
+<p><small>Sube la <b>Ficha Proveedor MundoSocios</b> que envió el
+proveedor, en Excel (.xlsx) o PDF: el portal lee datos tributarios,
+representantes, contacto, DTE y datos bancarios, y abre la ficha para
+revisar y guardar. El orden con el Paso 1 da lo mismo.</small></p>
+<form method="post" action="/cargar_ficha" enctype="multipart/form-data">
+<p><input type="file" name="archivo" accept=".xlsx,.pdf" required>
+{_selector_operador(config)} <button>Cargar ficha</button></p></form></div>
 <div class="tarjeta">{lista}</div>"""
     return pagina("Proveedores", cuerpo, "/proveedor")
 

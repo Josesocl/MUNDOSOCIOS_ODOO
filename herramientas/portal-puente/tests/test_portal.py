@@ -137,6 +137,45 @@ class TestFichaProveedor(unittest.TestCase):
         self.assertEqual(fila[idx["Tipo proveedor"]], "P")
         self.assertEqual(fila[idx["Cuenta Tipo"]], 3)   # corriente = 3
 
+    def test_ficha_desde_xlsx(self):
+        # ficha simulada con la estructura del archivo oficial
+        filas = [["", "FICHA PROVEEDOR"],
+                 ["", "DATOS TRIBUTARIOS"],
+                 ["", "RUT", "76411128-1"],
+                 ["", "Razón Social", "IB LIMITADA"],
+                 ["", "Correo", "v@ib.cl"],
+                 ["", "REPRESENTANTE LEGAL 2 (Si aplica)"],
+                 ["", "Nombre completo"],          # vacío: no debe capturar
+                 ["", "RUT"],
+                 ["", "Correo"],
+                 ["", "DATOS BANCARIOS"],
+                 ["", "Banco", "ITAU CHILE"],
+                 ["", "Tipo de Cuenta", "CUENTA CORRIENTE"],
+                 ["", "Nro", 215144521]]
+        binario = portal.generar_xlsx(filas)
+        datos = portal.parsear_ficha_archivo("ficha.xlsx", binario)
+        self.assertEqual(datos["rut"], "76411128-1")
+        self.assertEqual(datos["razon_social"], "IB LIMITADA")
+        self.assertEqual(datos["tipo_cuenta"], "CUENTA CORRIENTE")
+        self.assertEqual(datos["numero_cuenta"], "215144521")
+        self.assertNotIn("rep2_rut", datos)   # etiqueta no es valor
+
+    def test_ficha_desde_pdf(self):
+        cuerpo = (b"BT (DATOS TRIBUTARIOS) Tj (RUT) Tj (76411128-1) Tj "
+                  b"(Razon Social) Tj (IB LIMITADA) Tj (DATOS BANCARIOS) Tj "
+                  b"(Banco) Tj (ITAU CHILE) Tj (Nro) Tj (215144521) Tj ET")
+        pdf = (b"%PDF-1.4\n1 0 obj\n<< >>\nstream\n" + cuerpo
+               + b"\nendstream\nendobj\n%%EOF")
+        datos = portal.parsear_ficha_archivo("ficha.pdf", pdf)
+        self.assertEqual(datos["rut"], "76411128-1")
+        self.assertEqual(datos["banco"], "ITAU CHILE")
+
+    def test_ficha_sin_rut_reclama(self):
+        binario = portal.generar_xlsx([["", "DATOS BANCARIOS"],
+                                       ["", "Banco", "ITAU"]])
+        with self.assertRaises(RuntimeError):
+            portal.parsear_ficha_archivo("ficha.xlsx", binario)
+
     def test_codigos_manager(self):
         self.assertEqual(portal.codigo_tipo_cuenta("Cuenta corriente"), 3)
         self.assertEqual(portal.codigo_tipo_cuenta("vista"), 1)
