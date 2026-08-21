@@ -119,12 +119,34 @@ class TestFichaProveedor(unittest.TestCase):
         self.assertEqual(estado, "EN VALIDACIÓN")
         self.assertIn("Verificación SII vigente (APTO-SII)", faltantes)
 
-    def test_documento_manager_proveedor(self):
+    def test_documento_manager_formato_oficial_xlsx(self):
+        import io
+        import zipfile
         doc = portal.documento_manager_proveedor(dict(FICHA_COMPLETA))
-        self.assertIn("1. Identificación;RUT;65091028-1", doc)
-        self.assertIn("4. Datos bancarios;Banco;Banco de Chile", doc)
-        self.assertIn("4. Datos bancarios;Número de cuenta;123456789", doc)
-        self.assertIn("MANAGER+;Clasificación;sin clasificación", doc)
+        with zipfile.ZipFile(io.BytesIO(doc)) as z:
+            hoja = z.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        for esperado in ("Razón social", "Email SII", "Cuenta Tipo",
+                         "65091028-1", "PROVEEDOR DE PRUEBA", "123456789"):
+            self.assertIn(esperado, hoja)
+        # fila oficial de 37 columnas con los códigos de Manager+
+        fila = portal.fila_manager_proveedor(dict(FICHA_COMPLETA))
+        self.assertEqual(len(fila), 37)
+        self.assertEqual(len(portal.COLUMNAS_MANAGER), 37)
+        idx = {c: i for i, c in enumerate(portal.COLUMNAS_MANAGER)}
+        self.assertEqual(fila[idx["Tipo cliente"]], "N")
+        self.assertEqual(fila[idx["Tipo proveedor"]], "P")
+        self.assertEqual(fila[idx["Cuenta Tipo"]], 3)   # corriente = 3
+
+    def test_codigos_manager(self):
+        self.assertEqual(portal.codigo_tipo_cuenta("Cuenta corriente"), 3)
+        self.assertEqual(portal.codigo_tipo_cuenta("vista"), 1)
+        self.assertEqual(portal.codigo_tipo_cuenta("ahorro"), 2)
+        self.assertEqual(
+            portal.codigo_tipo_proveedor({"tipo_dte": "Boleta de Honorarios"}),
+            "H")
+        self.assertEqual(
+            portal.codigo_tipo_proveedor({"tipo_dte": "Factura Electrónica"}),
+            "P")
 
 
 class TestChecklist(unittest.TestCase):

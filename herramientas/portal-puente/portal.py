@@ -506,26 +506,156 @@ def evaluar_solicitud(datos, solicitudes=None, presupuesto=None,
 def _guardar_doc(nombre, contenido):
     carpeta = DATOS / "manager"
     carpeta.mkdir(parents=True, exist_ok=True)
-    (carpeta / nombre).write_text(contenido, encoding="utf-8-sig")
+    ruta = carpeta / nombre
+    if isinstance(contenido, bytes):
+        ruta.write_bytes(contenido)
+    else:
+        ruta.write_text(contenido, encoding="utf-8-sig")
     return nombre
 
 
-def documento_manager_proveedor(ficha):
-    """Documento de carga a Manager+ para proveedor NUEVO: todos los
-    campos de la ficha, en el orden de las pantallas (Mantenedores >
-    Clientes y/o proveedores + pestañas Contactos y Cuentas bancarias)."""
-    salida = io.StringIO()
-    w = csv.writer(salida, delimiter=";")
-    w.writerow(["SECCION", "CAMPO", "VALOR"])
-    w.writerow(["FICHA", "Estado ficha", evaluar_ficha(ficha)[0]])
-    w.writerow(["FICHA", "Verificación SII",
-                f"{ficha.get('sii_resultado', '')} {ficha.get('sii_fecha', '')}"])
-    for clave, etiqueta, seccion, _ in CAMPOS_FICHA:
-        w.writerow([seccion, etiqueta, ficha.get(clave, "")])
-    w.writerow(["MANAGER+", "Clasificación", "sin clasificación"])
-    w.writerow(["MANAGER+", "Tipo proveedor", ficha.get("tipo_proveedor")
-                or "Nacional (facturas)"])
+def _col_letra(n):
+    letras = ""
+    while n:
+        n, resto = divmod(n - 1, 26)
+        letras = chr(65 + resto) + letras
+    return letras
+
+
+def generar_xlsx(filas, hoja="Hoja1"):
+    """Genera un .xlsx mínimo (una hoja) solo con la librería estándar."""
+    import zipfile
+
+    def celda(ref, valor):
+        if isinstance(valor, (int, float)) and not isinstance(valor, bool):
+            return f'<c r="{ref}" t="n"><v>{valor}</v></c>'
+        texto = html.escape(str(valor), quote=False)
+        return (f'<c r="{ref}" t="inlineStr"><is><t xml:space="preserve">'
+                f"{texto}</t></is></c>")
+
+    filas_xml = []
+    for i, fila in enumerate(filas, 1):
+        celdas = "".join(celda(f"{_col_letra(j)}{i}", v)
+                         for j, v in enumerate(fila, 1) if v != "")
+        filas_xml.append(f'<row r="{i}">{celdas}</row>')
+    sheet = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+             '<worksheet xmlns="http://schemas.openxmlformats.org/'
+             'spreadsheetml/2006/main"><sheetData>'
+             + "".join(filas_xml) + "</sheetData></worksheet>")
+    workbook = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<workbook xmlns="http://schemas.openxmlformats.org/'
+                'spreadsheetml/2006/main" xmlns:r="http://schemas.'
+                'openxmlformats.org/officeDocument/2006/relationships">'
+                f'<sheets><sheet name="{hoja}" sheetId="1" r:id="rId1"/>'
+                "</sheets></workbook>")
+    rels_wb = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+               '<Relationships xmlns="http://schemas.openxmlformats.org/'
+               'package/2006/relationships"><Relationship Id="rId1" '
+               'Type="http://schemas.openxmlformats.org/officeDocument/'
+               '2006/relationships/worksheet" Target="worksheets/'
+               'sheet1.xml"/></Relationships>')
+    rels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/'
+            'package/2006/relationships"><Relationship Id="rId1" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+            'relationships/officeDocument" Target="xl/workbook.xml"/>'
+            "</Relationships>")
+    tipos = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+             '<Types xmlns="http://schemas.openxmlformats.org/package/'
+             '2006/content-types"><Default Extension="rels" ContentType='
+             '"application/vnd.openxmlformats-package.relationships+xml"/>'
+             '<Default Extension="xml" ContentType="application/xml"/>'
+             '<Override PartName="/xl/workbook.xml" ContentType='
+             '"application/vnd.openxmlformats-officedocument.spreadsheetml'
+             '.sheet.main+xml"/><Override PartName="/xl/worksheets/'
+             'sheet1.xml" ContentType="application/vnd.openxmlformats-'
+             'officedocument.spreadsheetml.worksheet+xml"/></Types>')
+    salida = io.BytesIO()
+    with zipfile.ZipFile(salida, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", tipos)
+        z.writestr("_rels/.rels", rels)
+        z.writestr("xl/workbook.xml", workbook)
+        z.writestr("xl/_rels/workbook.xml.rels", rels_wb)
+        z.writestr("xl/worksheets/sheet1.xml", sheet)
     return salida.getvalue()
+
+
+# Formato OFICIAL de carga masiva de Manager+ "Cliente y Proveedores"
+# (Cliente_y_Proveedores_formatos_1.xlsx, 37 columnas).
+COLUMNAS_MANAGER = [
+    "RUT", "Razón social", "Nombre de fantasía", "Giro", "RUT Holding",
+    "Area de Producción", "Clasificación", "Email", "Email SII",
+    "Comentario", "Tipo cliente", "Tipo proveedor", "Vencimiento",
+    "Plazo de pago", "Código vendedor", "Código comisionista",
+    "Código cobrador", "Lista de precio", "Comentario empresa",
+    "Descripción dirección", "Dirección", "Código comuna", "Código ciudad",
+    "Atención contacto", "Email contacto", "Teléfono", "Teléfono 2",
+    "Cuenta Banco", "Cuenta Tipo", "N° de Cuenta", "ID Extranjero",
+    "Texto 1", "Texto 2", "Código de Característica 1",
+    "Código de Característica 2", "Monto de Crédito autorizado",
+    "Días de mora"]
+
+
+def codigo_tipo_cuenta(texto):
+    """Manager+: 1=Cuenta vista, 2=Cuenta de ahorro, 3=Cuenta corriente,
+    4=Vale vista."""
+    plano = _sin_tildes(str(texto or "")).lower()
+    if "corriente" in plano:
+        return 3
+    if "ahorro" in plano:
+        return 2
+    if "vale" in plano:
+        return 4
+    if "vista" in plano:
+        return 1
+    return ""
+
+
+def codigo_tipo_proveedor(ficha):
+    """Manager+: N/P/H/E/A. Honorarios si el DTE o el tipo sugerido lo
+    indican; si no, P=Proveedor."""
+    texto = _sin_tildes(f"{ficha.get('tipo_dte', '')} "
+                        f"{ficha.get('tipo_proveedor', '')}").lower()
+    return "H" if "honorario" in texto else "P"
+
+
+def fila_manager_proveedor(ficha):
+    """Mapea la ficha del portal a las 37 columnas del formato oficial."""
+    comentario = (f"Alta Portal Puente MS — verificación SII "
+                  f"{ficha.get('sii_resultado', '')} "
+                  f"{ficha.get('sii_fecha', '')}").strip()
+    valores = {
+        "RUT": ficha.get("rut", ""),
+        "Razón social": ficha.get("razon_social", ""),
+        "Nombre de fantasía": ficha.get("nombre_fantasia")
+        or ficha.get("razon_social", ""),
+        "Giro": ficha.get("giro", ""),
+        "Email": ficha.get("correo", ""),
+        "Email SII": ficha.get("correo_sii", ""),
+        "Comentario": comentario,
+        "Tipo cliente": "N",
+        "Tipo proveedor": codigo_tipo_proveedor(ficha),
+        "Plazo de pago": ficha.get("plazo_pago", ""),
+        "Descripción dirección": "Comercial",
+        "Dirección": ficha.get("direccion", ""),
+        "Código comuna": ficha.get("comuna", ""),
+        "Código ciudad": ficha.get("ciudad", ""),
+        "Atención contacto": ficha.get("contacto_nombre", ""),
+        "Email contacto": ficha.get("contacto_correo", ""),
+        "Teléfono": ficha.get("telefono", ""),
+        "Teléfono 2": ficha.get("contacto_telefono", ""),
+        "Cuenta Banco": ficha.get("banco", ""),
+        "Cuenta Tipo": codigo_tipo_cuenta(ficha.get("tipo_cuenta")),
+        "N° de Cuenta": ficha.get("numero_cuenta", ""),
+    }
+    return [valores.get(c, "") for c in COLUMNAS_MANAGER]
+
+
+def documento_manager_proveedor(ficha):
+    """Archivo de carga a Manager+ (formato oficial 37 columnas, .xlsx):
+    fila 1 encabezados, fila 2 datos del proveedor."""
+    return generar_xlsx([COLUMNAS_MANAGER, fila_manager_proveedor(ficha)],
+                        hoja="Hoja1")
 
 
 def archivo_manager_solicitud(datos, evaluacion, oc=None):
@@ -690,14 +820,14 @@ class Portal(BaseHTTPRequestHandler):
                 self._responder(vista_solicitud(ruta.path.split("/")[2]))
             elif ruta.path.startswith("/manager/"):
                 self._descargar_manager_solicitud(
-                    ruta.path.split("/")[2].replace(".csv", ""))
+                    ruta.path.split("/")[2].replace(".xlsx", "").replace(".csv", ""))
             elif ruta.path == "/proveedor":
                 self._responder(vista_proveedores())
             elif ruta.path == "/ficha":
                 self._responder(vista_ficha(q.get("rut", "")))
             elif ruta.path.startswith("/manager_proveedor/"):
                 self._descargar_manager_proveedor(
-                    ruta.path.split("/")[2].replace(".csv", ""))
+                    ruta.path.split("/")[2].replace(".xlsx", "").replace(".csv", ""))
             elif ruta.path == "/presupuesto":
                 self._responder(vista_presupuesto())
             elif ruta.path == "/bitacora":
@@ -729,11 +859,13 @@ class Portal(BaseHTTPRequestHandler):
             self._responder("No existe", codigo=404)
             return
         contenido = documento_manager_proveedor(ficha)
-        nombre = f"CARGA_MANAGER_PROVEEDOR_{rut}_{datetime.now():%Y%m%d-%H%M}.csv"
+        nombre = (f"CARGA_MANAGER_PROVEEDOR_{rut}_"
+                  f"{datetime.now():%Y%m%d-%H%M}.xlsx")
         _guardar_doc(nombre, contenido)
         bitacora("archivo_manager_proveedor", f"{rut} → {nombre}")
-        self._responder(contenido.encode("utf-8-sig"),
-                        "text/csv; charset=utf-8", descarga=nombre)
+        self._responder(contenido,
+                        "application/vnd.openxmlformats-officedocument."
+                        "spreadsheetml.sheet", descarga=nombre)
 
     # ------------------------------------------------------------ POST
 
@@ -1109,7 +1241,7 @@ def vista_proveedores(mensaje=""):
                      f"<td>{html.escape(f.get('razon_social', ''))}</td>"
                      f"<td>{_chip(estado)}</td>"
                      f"<td>{html.escape(f.get('actualizado', ''))}</td>"
-                     f'<td><a href="/manager_proveedor/{rut}.csv">carga '
+                     f'<td><a href="/manager_proveedor/{rut}.xlsx">carga '
                      "Manager+</a></td></tr>")
     lista = ("<h3>Fichas guardadas</h3><table><tr><th>RUT</th><th>Razón "
              "social</th><th>Estado</th><th>Actualizada</th><th>Documento"
@@ -1172,7 +1304,7 @@ formulario/ficha que envió el proveedor.</small></p>
 {''.join(secciones)}
 <p style="margin-top:1em">{_selector_operador(config)}
 <button>Guardar ficha</button>
-<a href="/manager_proveedor/{rut}.csv"><button type="button" class="sec">
+<a href="/manager_proveedor/{rut}.xlsx"><button type="button" class="sec">
 Documento de carga Manager+</button></a></p>
 </form></div>"""
     return pagina(f"Ficha {rut}", cuerpo, "/proveedor")
