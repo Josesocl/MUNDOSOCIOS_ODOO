@@ -17,3 +17,4 @@ credentials*.json
 .claude/scheduled_tasks.lock
 .estado_simpleapi.json
 clave_simpleapi.txt
+datos_portal/
